@@ -64,6 +64,10 @@ GpuResidentTile WorldRegistry::CopyTile(GpuTileKey key)const {
     if(it!=cache_.ResidentTiles().end())return it->second;
     GpuResidentTile tile{};tile.key=key;return tile;
 }
+void WorldRegistry::RefreshPatrimony(){
+    vegetationPatrimony_.RefreshInvalid(cache_);
+    forestPatrimony_.RefreshInvalid(cache_);
+}
 uint64_t WorldRegistry::Create(const WorldObject& object) {
     auto ids=CreateBatch(std::span<const WorldObject>(&object,1));
     return ids.front();
@@ -206,6 +210,7 @@ std::vector<uint64_t> WorldRegistry::ApplyBatch(std::span<const Change> changes,
     for(const auto& [id,key]:moved)owners_.insert_or_assign(id,key);
     nextIdentity_=identity;
     nextRenderId_=renderId;
+    RefreshPatrimony();
     return identities;
 }
 uint32_t WorldRegistry::RenderId(uint64_t identity)const{
@@ -220,10 +225,16 @@ bool WorldRegistry::Update(uint64_t id,const WorldObject& object) {
     const auto& oldTile=cache_.ResidentTiles().at(oldKey);
     const auto& old=oldTile.objects.at(oldTile.byIdentity.at(id));
     const auto updated=Record(object,id,old.renderId);
-    vegetationPatrimony_.InvalidateAt(id,object.mesh,object.material,object.current.p);
-    forestPatrimony_.InvalidateAt(id,object.mesh,object.material,object.current.p);
-    if(oldKey==newKey)
-        return cache_.PatchTileObject(oldKey,id,updated);
+    const auto refresh=[&]{
+        vegetationPatrimony_.InvalidateAt(id,object.mesh,object.material,object.current.p);
+        forestPatrimony_.InvalidateAt(id,object.mesh,object.material,object.current.p);
+        RefreshPatrimony();
+    };
+    if(oldKey==newKey){
+        const bool changed=cache_.PatchTileObject(oldKey,id,updated);
+        if(changed)refresh();
+        return changed;
+    }
     auto source=CopyTile(oldKey);
     const uint32_t index=source.byIdentity.at(id);
     source.objects.erase(source.objects.begin()+index);
@@ -233,6 +244,7 @@ bool WorldRegistry::Update(uint64_t id,const WorldObject& object) {
     target.objects.push_back(updated);
     cache_.UpsertTile(std::move(target));
     owner->second=newKey;
+    refresh();
     return true;
 }
 bool WorldRegistry::Erase(uint64_t id) {
@@ -258,6 +270,7 @@ uint64_t WorldRegistry::EraseBatchImpl(std::span<const uint64_t> ids,bool forget
         else cache_.UpsertTile(std::move(tile));
         for(uint64_t id:idsInTile){owners_.erase(id);if(forgetCanopy){vegetationPatrimony_.Invalidate(id);forestPatrimony_.Invalidate(id);ForgetCanopyRoute(id);}}
     }
+    if(forgetCanopy)RefreshPatrimony();
     return count;
 }
 RenderContributions WorldRegistry::Contributions()noexcept {

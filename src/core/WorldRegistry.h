@@ -43,6 +43,7 @@ class WorldRegistry {
     TerritorialPatrimony vegetationPatrimony_,forestPatrimony_;
     std::unordered_map<uint64_t,CanopyPlant> canopyPlants_;
     void ForgetCanopyRoute(uint64_t);
+    void RefreshPatrimony();
     uint64_t EraseBatchImpl(std::span<const uint64_t>,bool forgetCanopy);
     std::unordered_map<uint64_t,GpuTileKey> owners_;
     uint64_t nextIdentity_{1};

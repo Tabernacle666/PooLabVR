@@ -1429,7 +1429,11 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     auto& selection=forestSelection;
     const uint32_t lodMask=(prismSceneMask&16u)&&(prismSceneMask&15u)!=15u?prismSceneMask:0u;
     const bool lodMaskChanged=selection.lodSelectionMask!=lodMask;
-    const bool rebuild=lodMaskChanged||selection.tileSource!=tiles||
+    // The diagnostic mask belongs to raster visibility and ray descriptors,
+    // not to geometry residency. A mask-specific generation removes routes
+    // which the next diagnostic block would otherwise render natively.
+    // Keep one compatible complete cut across every diagnostic mask.
+    const bool rebuild=selection.tileSource!=tiles||
         (tiles&&tiles->ForestTileResetPending());
     const bool sceneChanged=rebuild||(tiles&&!tiles->ForestDirtyTiles().empty())||
         !selection.staticCaptured||selection.staticGeneration!=sceneCache.ContentGeneration();
@@ -1485,7 +1489,6 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     const auto consider=[&](std::vector<Mg2InstanceRoute>& inputs,
         uint32_t mesh,uint32_t flags,Mg2InstanceRoute key,XMFLOAT3 root,
         XMFLOAT4 rotation,XMFLOAT3 scale){
-        if(!OASIS_PRISM_VISIBLE(lodMask,OASIS_PRISM_CATEGORY(flags)))return;
         if((flags&(DeformedObject|AlphaBlendObject))!=0u||
            !std::ranges::binary_search(forestParts,mesh,{},&Mg2ForestPart::mesh))return;
         const float lo=std::min({std::abs(scale.x),std::abs(scale.y),std::abs(scale.z)});
@@ -1565,7 +1568,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     }
     selection.tileSource=tiles;
     uint64_t staticScanned=0;
-    if(lodMaskChanged||!selection.staticCaptured||selection.staticGeneration!=sceneCache.ContentGeneration()){
+    if(!selection.staticCaptured||selection.staticGeneration!=sceneCache.ContentGeneration()){
         removeInputs(selection.staticInputs);
         selection.staticInputs.clear();
         const auto statics=sceneCache.StaticInstances();
@@ -1582,7 +1585,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     }
     selection.lodSelectionMask=lodMask;
     if(lodMaskChanged){
-        char line[160];std::snprintf(line,sizeof(line),"lod_mg2_mask=%u registry_instances=%zu\r\n",lodMask,selection.registry.size());DiagnosticLine(line);
+        char line[192];std::snprintf(line,sizeof(line),"lod_mg2_mask=%u registry_instances=%zu mask_independent_cut=1\r\n",lodMask,selection.registry.size());DiagnosticLine(line);
     }
     forestStatus.inputTilesChanged=changedTiles;
     forestStatus.inputObjectsScanned=scanned;

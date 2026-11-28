@@ -1,6 +1,6 @@
 # OASIS — Plan directeur LOD / géométrie territoriale
 
-**Révision du plan : 27 novembre 2026. Prochain billet à exécuter : LOD-23.**
+**Révision du plan : 27 novembre 2026. LOD-23 en cours d'intégration ; prochain billet à terminer : LOD-23.**
 
 Ce fichier est le document de dispatch du chantier. Il doit suffire à un agent sans historique de conversation. Le code et les journaux de main sont la source de vérité technique ; le plan fixe les objectifs, l'ordre et le périmètre, pas une liste d'implémentations intangibles.
 
@@ -28,7 +28,7 @@ Référentiel : [NVIDIA RTX Mega Geometry](https://github.com/NVIDIA-RTX/RTXMG),
 | 0 | LOD-00 | INTÉGRÉ, benchmark exécuté | Baseline vanilla du chantier LOD : bcb2df1972a1f78ee69b16e48c19ba6424eb49f1 |
 | 1a | LOD-21A | INTÉGRÉ, qualification optique insuffisante | Colonies/couvertures basses : f03cb9ed01a7a990214994cc4fb40197e499f8b4 |
 | 1b | LOD-21B | INTÉGRÉ, qualification optique insuffisante | Groupes/massifs forestiers : 97b91146b80862f15786d38372463dadf55a05c4 |
-| 2 | **LOD-23** | **NON INTÉGRÉ — PROCHAIN** | Production corrigée ET exploitation territoriale de toute la végétation |
+| 2 | **LOD-23** | **PARTIEL — NON QUALIFIÉ — À TERMINER** | Corrections CPU du patrimoine et conservation des routes MG2 entre masques ; sélection et publication territoriales restent à intégrer |
 | 3 | LOD-22 | NON INTÉGRÉ | Patrimoine architectural, mobilier et composites |
 | 4 | LOD-31 | NON INTÉGRÉ | Généralisation de la sélection territoriale GPU |
 | 5 | LOD-32 | NON INTÉGRÉ | Généralisation de la publication raster / RTX |
@@ -84,7 +84,15 @@ Le producteur garde de la densité dans ses métadonnées, mais Fit limite la ta
 
 ## 5. LOD-23 — Intégration territoriale complète de la végétation
 
-**Statut : NON INTÉGRÉ. Un seul billet, un seul commit substantiel, une seule version testable ; quatre opérations historiques absorbées.** L'agent choisit l'ordre de ses opérations internes, examine main et l'amont/aval, et tranche en fonction du comportement réel sur RTX, sans ajouter des sous-billets de dispatch.
+**Statut : PARTIEL — NON QUALIFIÉ.** L'intégration partielle ci-dessous ne clôt pas le billet et ne déclenche pas LOD-22. Les quatre opérations historiques restent absorbées dans LOD-23. L'agent choisit l'ordre de ses opérations internes, examine main et l'amont/aval, et tranche en fonction du comportement réel sur RTX, sans ajouter des sous-billets de dispatch.
+
+### État de l'intégration partielle (commit contenant cette révision)
+ 
+- Producteur : sous-cellules directionnelles à demi-pas ; une fusion n'est conservée que si l'erreur de surface projetée sur chacun des trois axes n'augmente pas par rapport aux sous-patches. Les triangles supplémentaires gardent leurs UV, matériaux et supports ; les groupes sont déterministes. Cache territorial versionné `lod23-v2` (les caches source MG2 et terrain restent intacts). Cela ne valide ni la transmittance ni la couleur et peut augmenter le coût CPU / mémoire de préparation.
+- Reconstruction locale : après une mutation/effacement du registre, retrouver les identités vivantes des feuilles touchées via l'index résident, reconstruire ces feuilles depuis les sources partagées, supprimer les parents vides et recalculer les ancêtres affectés. Cette reconstruction est synchrone sur le thread de session lors d'une mutation, pas un parcours par frame ; il reste à qualifier son coût et le cas des nouvelles insertions en dehors du producteur d'extents.
+- Fallback diagnostic : retirer le masque de scène du registre de sélection MG2 ; la coupe complète reste compatible avec les masques successifs, qui sont appliqués dans les consommateurs raster et rayons existants. Le journal `lod_mg2_mask` indique `mask_independent_cut=1`. Les métriques de sélection concernent désormais la coupe complète, pas la seule catégorie visible ; comparer le travail raster/RTX par scène comme avant. Le fallback initial, les nouvelles routes non encore publiées et la reconstruction de descripteurs RTX lors du changement de masque restent à traiter.
+- **Non réalisé :** publication dynamique des vrais triangles collectifs dans le catalogue MG2 et ses accélérations, sélection territoriale GPU par racines avec coupes raster/rayons indépendantes, substitution atomique des descendants, élimination du parcours et du readback individuels, cache des produits parents et qualification optique incluant silhouette/transmittance/couleur. Les proxies CPU ne sont toujours pas rendus ; ne pas attribuer de gain visuel ou de FPS à leur production.
+- Validation : inspection statique des consommateurs et des transactions ; compilation Windows/DX12, test de mutation et benchmark VR non exécutés dans cet environnement. Le testeur peut lancer `pull_compile_run.bat lod` et vérifier l'absence de perte des catégories, le compteur de meshlets natifs après la première publication complète, la couverture directionnelle des nouvelles coupes CPU, le coût de préparation et les métriques de sélection. Aucun gain n'est déclaré sans mesure.
 
 ### Production géométrique
 

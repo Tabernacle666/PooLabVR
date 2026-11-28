@@ -17,10 +17,9 @@
 #include <vector>
 
 namespace OASIS {
-// LOD-21: CPU-only, immutable source geometry and territorial cuts. No mesh
-// is appended to SceneData; no additional WorldObject, GPU route or BLAS.
-// A patch is a triangulated directional surface voxel, not a solid box.
-// The representative triangle retains its material and original UV frame.
+// Territorial CPU patrimony. Mesh publication is still a separate consumer.
+// Patches retain the source material and UV frame; each bin may retain
+// multiple spatially distinct triangles if one loses directional coverage.
 // Coverage is summed alpha-weighted projected area, not exact transmittance.
 // Consumers must use the stored error/support to decide whether to refine.
 class TerritorialPatrimony {
@@ -114,6 +113,7 @@ private:
     std::map<Key,Node> nodes_;
     std::unordered_map<uint64_t,Key> owners_;
     std::set<Key> invalid_;
+    std::set<uint64_t> dirtyRoutes_;
     std::array<uint64_t,Levels> counts_{};
     uint64_t sourceHits_{},sourceMisses_{};
     static double Ms(Clock::time_point start){
@@ -185,10 +185,47 @@ private:
         const auto [it,inserted]=bins.try_emplace(key,p);
         if(!inserted)Merge(it->second,p);
     }
-    static void Finish(Builder& b){
-        b.node.patches.reserve(b.bins.size());
-        for(auto& [key,p]:b.bins){Fit(p);b.node.patches.push_back(p);}
+    // Each nominal bin is accumulated at half its spatial pitch. Keep its
+    // subpatches when a single fitted triangle would increase the directional
+    // area deficit. This retains actual triangles at separate supports rather
+    // than increasing a density number which the renderer cannot consume.
+    static std::vector<Patch> FinishBins(Bins& fine){
+        std::map<Bin,std::vector<Patch>> groups;
+        for(auto& [k,p]:fine){
+            Fit(p);
+            const Bin parent{Align(k.x,2)/2,Align(k.y,2)/2,Align(k.z,2)/2,
+                k.material,k.kind,k.orientation};
+            groups[parent].push_back(std::move(p));
+        }
+        std::vector<Patch> result;result.reserve(groups.size());
+        const auto projection=[](const Patch& p){
+            return Directional(Normal(p.u,p.v),float(p.ProxyCovered()));
+        };
+        for(auto& [key,parts]:groups){
+            if(parts.size()==1u){result.push_back(std::move(parts.front()));continue;}
+            Patch coarse=parts.front();
+            XMFLOAT3 fineProjected=projection(parts.front());
+            for(size_t i=1;i<parts.size();++i){
+                Merge(coarse,parts[i]);
+                fineProjected=Add(fineProjected,projection(parts[i]));
+            }
+            Fit(coarse);
+            const auto c=projection(coarse),target=coarse.projected;
+            const auto noWorse=[](float combined,float separate,float reference){
+                const float rounding=16.f*std::numeric_limits<float>::epsilon()*
+                    std::max({1.f,std::abs(combined),std::abs(separate),std::abs(reference)});
+                return std::abs(reference-combined)<=std::abs(reference-separate)+rounding;
+            };
+            // Do not trade a lost vertical or grazing-angle contribution
+            // against a larger horizontal surface in another direction.
+            if(noWorse(c.x,fineProjected.x,target.x)&&noWorse(c.y,fineProjected.y,target.y)&&
+                noWorse(c.z,fineProjected.z,target.z))
+                result.push_back(std::move(coarse));
+            else for(auto& part:parts)result.push_back(std::move(part));
+        }
+        return result;
     }
+    static void Finish(Builder& b){b.node.patches=FinishBins(b.bins);}
     static bool Valid(const Patch& p){
         return Finite(p.center)&&Finite(p.lo)&&Finite(p.hi)&&Finite(p.u)&&Finite(p.v)&&
             Finite(p.projected)&&Finite(p.color)&&p.lo.x<=p.hi.x&&p.lo.y<=p.hi.y&&p.lo.z<=p.hi.z&&
@@ -350,7 +387,7 @@ private:
     }
     static std::filesystem::path Cache(const char* type,const std::string& sig){
         if(sig.empty())return {};
-        return DiskBake::Key(L"territorial-patrimony",("lod21-v1/"+std::string(type)+"/"+sig).c_str(),{});
+        return DiskBake::Key(L"territorial-patrimony",("lod23-v2/"+std::string(type)+"/"+sig).c_str(),{});
     }
     static bool ReadLeaf(DiskBake::Reader& io,Node& n){
         return io.Pod(n.key.x)&&io.Pod(n.key.z)&&io.Pod(n.key.level)&&
@@ -413,7 +450,7 @@ private:
             for(const auto& source:s.patches){
                 const auto p=Place(source,o);
                 if(!Valid(p))Fail("LOD-21 invalid placed surface");
-                Insert(b.bins,At(p,2.5),p);
+                Insert(b.bins,At(p,1.25),p);
             }
         }
         d.leaves.reserve(builders.size());
@@ -449,7 +486,7 @@ private:
     }
 public:
     void Reset(){
-        sources_.clear();materials_.clear();foliageOptics_.clear();nodes_.clear();owners_.clear();invalid_.clear();
+        sources_.clear();materials_.clear();foliageOptics_.clear();nodes_.clear();owners_.clear();invalid_.clear();dirtyRoutes_.clear();
         counts_.fill(0);sourceHits_=sourceMisses_=0;
     }
     // Called at scene setup only, before the expansion worker can read sources.
@@ -504,11 +541,11 @@ public:
             };
             const auto p=FromTriangle(scene,material,kind,index(i),index(i+1),index(i+2),error,foliage);
             if(!(p.area>1.e-14f))continue;
-            Insert(bins,{bin(p.center.x,lo.x,extent.x,horizontal),bin(p.center.y,lo.y,extent.y,vertical),
-                bin(p.center.z,lo.z,extent.z,horizontal),material,kind,Orientation(p)},p);
+            Insert(bins,{bin(p.center.x,lo.x,extent.x,2u*horizontal),bin(p.center.y,lo.y,extent.y,2u*vertical),
+                bin(p.center.z,lo.z,extent.z,2u*horizontal),material,kind,Orientation(p)},p);
         }
-        s.patches.reserve(bins.size());
-        for(auto& [b,p]:bins){Fit(p);if(!Valid(p))Fail("LOD-21 source surface");s.patches.push_back(p);}
+        s.patches=FinishBins(bins);
+        for(const auto& p:s.patches)if(!Valid(p))Fail("LOD-23 source surface");
         if(s.patches.empty())Fail("LOD-21 empty source surface");
         if(!path.empty()){DiskBake::Writer io(path);if(io.Vec(s.patches))io.Finish();}
         sources_.emplace(key,std::move(s));
@@ -536,11 +573,10 @@ public:
     // Session-thread publication: only changed leaves and their ancestors.
     // The persistent cache stores leaf products; parents are regenerated
     // exclusively from their already-cooked child geometry, not source meshes.
-    Report Publish(Delta d){
+    Report Publish(Delta d,std::set<Key> parents={}){
         const auto start=Clock::now();Report report{};
         report.hits=d.hits;report.misses=d.misses;report.writes=d.writes;report.prepareMs=d.prepareMs;
         report.sourceHits=sourceHits_;report.sourceMisses=sourceMisses_;
-        std::set<Key> parents;
         for(auto& n:d.leaves){
             const auto key=n.key;
             for(auto id:n.routes)if(!owners_.emplace(id,key).second)Fail("LOD-21 duplicate source identity");
@@ -551,8 +587,8 @@ public:
                 std::sort(b.node.routes.begin(),b.node.routes.end());
                 b.node.sourceRoutes+=p.sourceRoutes;b.node.sourceTriangles+=p.sourceTriangles;
                 b.node.referenceTriangles+=p.referenceTriangles;
-                for(const auto& s:b.node.patches)Insert(b.bins,At(s,2.5),s);
-                for(const auto& s:p.patches)Insert(b.bins,At(s,2.5),s);
+                for(const auto& s:b.node.patches)Insert(b.bins,At(s,1.25),s);
+                for(const auto& s:p.patches)Insert(b.bins,At(s,1.25),s);
                 b.node.patches.clear();Finish(b);n=std::move(b.node);
             }
             Store(std::move(n));Include(report.changed[0],nodes_.at(key));parents.insert(Parent(key));
@@ -567,10 +603,15 @@ public:
                     const auto& n=found->second;b.node.children.push_back(child);
                     b.node.sourceRoutes+=n.sourceRoutes;b.node.sourceTriangles+=n.sourceTriangles;
                     b.node.referenceTriangles+=n.referenceTriangles;
-                    for(const auto& p:n.patches)Insert(b.bins,At(p,2.5*double(Side(level))),p);
+                    for(const auto& p:n.patches)Insert(b.bins,At(p,1.25*double(Side(level))),p);
                 }
-                if(b.node.children.empty())Fail("LOD-21 missing child");
-                Finish(b);Store(std::move(b.node));Include(report.changed[level],nodes_.at(key));
+                // An edited leaf may now be empty. Remove its empty ancestors
+                // rather than keeping stale coverage or rejecting destruction.
+                if(b.node.children.empty()){
+                    if(nodes_.erase(key))--counts_[level];
+                }else{
+                    Finish(b);Store(std::move(b.node));Include(report.changed[level],nodes_.at(key));
+                }
                 if(level+1u<Levels)next.insert(Parent(key));
             }
             parents=std::move(next);
@@ -579,14 +620,44 @@ public:
         return report;
     }
     void Invalidate(uint64_t identity){
-        const auto it=owners_.find(identity);if(it!=owners_.end())InvalidateKey(it->second);
+        const auto it=owners_.find(identity);
+        if(it!=owners_.end()){dirtyRoutes_.insert(identity);InvalidateKey(it->second);}
     }
     void InvalidateAt(uint64_t identity,uint32_t mesh,uint32_t material,XMFLOAT3 position){
-        const auto it=owners_.find(identity);
-        if(it!=owners_.end()){
-            InvalidateKey(it->second);
-            if(sources_.contains(SourceKey(mesh,material)))InvalidateKey(Leaf(position));
+        Invalidate(identity);
+        if(sources_.contains(SourceKey(mesh,material))){
+            dirtyRoutes_.insert(identity);
+            InvalidateKey(Leaf(position));
         }
+    }
+    // Reconstruct edited branches from the authoritative resident identity
+    // index after the registry transaction. Only the old/new leaves and
+    // their ancestors are visited. Source meshes remain shared and immutable.
+    void RefreshInvalid(const GpuSceneCache& cache){
+        if(invalid_.empty())return;
+        std::set<uint64_t> routes=dirtyRoutes_;
+        std::set<Key> parents;
+        for(const auto key:invalid_)if(key.level==0u){
+            const auto it=nodes_.find(key);
+            if(it!=nodes_.end())routes.insert(it->second.routes.begin(),it->second.routes.end());
+            parents.insert(Parent(key));
+        }
+        std::vector<Placement> input;input.reserve(routes.size());
+        for(const auto id:routes){
+            uint32_t index=0;
+            const auto* tile=cache.FindResidentOwner(id,index);
+            if(!tile)continue;
+            const auto& o=tile->objects[index];
+            if(!o.enabled||!sources_.contains(SourceKey(o.mesh,o.material)))continue;
+            input.push_back({id,o.mesh,o.material,
+                {{o.position.x,o.position.y,o.position.z},{o.rotation.x,o.rotation.y,o.rotation.z,o.rotation.w}},
+                {o.scale.x,o.scale.y,o.scale.z}});
+        }
+        auto delta=PreparePlacements(std::move(input));
+        for(const auto id:routes)owners_.erase(id);
+        for(const auto key:invalid_)if(key.level==0u&&nodes_.erase(key))--counts_[0];
+        invalid_.clear();dirtyRoutes_.clear();
+        Publish(std::move(delta),std::move(parents));
     }
     const std::map<Key,Node>& Nodes()const noexcept{return nodes_;}
 };
