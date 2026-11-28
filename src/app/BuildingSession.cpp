@@ -1493,6 +1493,7 @@ void BuildingSession::Tick(WorldRegistry& world,XMFLOAT3 head,float dt,
     savedStatus_=std::move(next.status);
     activeBreaches_.clear();
     candidate_.reset();
+    if(savePath_.empty()){status_=savedStatus_;return;}
     status_="SAUVEGARDE";
     saving_=std::async(std::launch::async,[path=savePath_,d=definition_,p=plan_]{return Save(path,d,p);});
 }

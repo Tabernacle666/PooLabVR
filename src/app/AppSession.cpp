@@ -2,6 +2,7 @@
 #include "OasisMetric.h"
 #include "SessionLaunch.h"
 #include "TargetCalibration.h"
+#include "TerritoryBenchmark.h"
 #include "DiskBake.h"
 #include "CampusBake.h"
 #include "ForestFloor.h"
@@ -47,6 +48,7 @@ void MarkDiagnosticStartupProgress() noexcept {
 
 std::wstring diagnosticLogPath;
 std::atomic<bool> diagnosticCaptured{};
+std::atomic<ULONGLONG> territoryStartedTick{};
 namespace {
     // Fixed RAM journal: never wait or allocate to record a loop message.
     std::array<char,8u*1024u*1024u> loopLog{};
@@ -104,12 +106,12 @@ bool FlushDiagnostic() noexcept {
 void DiagnosticFailure(const char* text) noexcept {
     char line[1024];std::snprintf(line,sizeof(line),"erreur=%s\r\n",text);DiagnosticLine(line);
     if(!diagnosticCaptured.load(std::memory_order_acquire))DiagnosticLine("capture=aucune\r\n");
-    FlushDiagnostic();
+    if(LaunchSessionMode()!=SessionMode::Territory)FlushDiagnostic();
 }
 void DiagnosticStartupCheckpoint(const char* text) noexcept {
     char line[256];std::snprintf(line,sizeof(line),"startup_checkpoint=%.220s\r\n",text);
     DiagnosticLine(line);
-    FlushDiagnostic();
+    if(LaunchSessionMode()!=SessionMode::Territory)FlushDiagnostic();
 }
 bool StartDiagnostic(const std::wstring& directory){
     std::error_code error;
@@ -123,7 +125,7 @@ bool StartDiagnostic(const std::wstring& directory){
     if(file==INVALID_HANDLE_VALUE)return false;
     CloseHandle(file);diagnosticLogPath=path;failureSink=DiagnosticFailure;startupCheckpointSink=DiagnosticStartupCheckpoint;
     const auto mode=LaunchSessionMode();
-    bufferLoopLog=IsSessionForwardTour(mode)||mode==SessionMode::Prism;
+    bufferLoopLog=IsSessionForwardTour(mode)||mode==SessionMode::Prism||mode==SessionMode::Territory;
     if(mode==SessionMode::Walk)walkLog.resize(128u*1024u*1024u);
     if(mode==SessionMode::Prism)walkLog.resize(32u*1024u*1024u);
     DiagnosticLine("OASIS\r\n");
@@ -214,7 +216,7 @@ struct DiagnosticCapture {
     std::wstring path;
     bool interactive{},requested{},attempted{},captured{},dlssLoopCompleted{},sphereBaselineCompleted{},sunCompleted{};
     int64_t firstFrame{};
-    bool mg2{},loopCompleted{},prismCompleted{};
+    bool mg2{},loopCompleted{},prismCompleted{},territoryCompleted{};
     std::optional<Pose> sessionForestSpawn;
     std::future<bool> captureWriter;
     void ResetPending(){if(!attempted){firstFrame=0;requested=false;}}
@@ -1866,6 +1868,11 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     const bool prismTest=LaunchSessionMode()==SessionMode::Prism;
     if(prismTest&&(!scene.solarSystem||!building||automated||diagnosticLogPath.empty()))Fail("PRISM requires live VR campus and diagnostic log");
     PrismBenchmark prismBenchmark;
+    const bool territoryTest=LaunchSessionMode()==SessionMode::Territory;
+    if(territoryTest&&(!scene.solarSystem||!building||automated||diagnosticLogPath.empty()))
+        Fail("Territoire requires the OASIS VR campus and journal");
+    const bool fixedTour=prismTest||territoryTest;
+    std::optional<TerritoryBenchmark> territory;
     const uint32_t sphereCount=scene.sphereObjectOffsets.empty()?1u:uint32_t(scene.sphereObjectOffsets.size()-1u);
     const bool paired=sphereCount>1u;
     PostMessageW(window,OutputWindowMessage,0,0);
@@ -1877,9 +1884,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     mappings.SetBuilding(buildingLoop?nullptr:building);
     std::optional<BuildingTour> buildingTour;
     if(buildingLoop)buildingTour.emplace(std::filesystem::path(diagnostic.path).parent_path());
-    mappings.SetNavigationOptions((!automated||passageCalibration)&&!buildingLoop&&!sunTest&&!prismTest,!automated&&!buildingLoop&&!sunTest&&!prismTest);
+    mappings.SetNavigationOptions((!automated||passageCalibration)&&!buildingLoop&&!sunTest&&!fixedTour,!automated&&!buildingLoop&&!sunTest&&!fixedTour);
     mappings.SetSpectaclePassage(logo&&!automated&&!scene.solarSystem,sphereCount);
-    if(!automated&&!buildingLoop&&!sunTest&&!prismTest)mappings.SetOrbitTool(&orbit);
+    if(!automated&&!buildingLoop&&!sunTest&&!fixedTour)mappings.SetOrbitTool(&orbit);
     const auto profileFolder=profile.LocalFile().empty()?std::filesystem::path(config).parent_path()/".oasis-local":
         profile.LocalFile().parent_path();
     if(!passageCalibration&&!mappings.LoadConfiguration(config,automated?std::filesystem::path{}:profileFolder/"controls.ini"))
@@ -1904,14 +1911,14 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     MarkDiagnosticStartupProgress();
     DiagnosticLine("etape=session_vr\r\n");xr.InitializeSession(graphics.Device(),graphics.Queue());
     const bool loopRequested=IsSessionForwardTour(LaunchSessionMode());
-    if(sphereDiagnostic||diagnostic.mg2||sunTest||loopRequested||prismTest)
-        graphics.EnableSphereBaselineTiming(diagnostic.mg2||sunTest||loopRequested||prismTest);
+    if(sphereDiagnostic||diagnostic.mg2||sunTest||loopRequested||fixedTour)
+        graphics.EnableSphereBaselineTiming(diagnostic.mg2||sunTest||loopRequested||fixedTour);
     if(diagnostic.mg2)graphics.EnableMg2Diagnostic();
     if(paired)graphics.EnableSpherePair(city,sphereCount);
     graphics.SetMaterialTuning(materialProfiles.Values());
     if(building)graphics.SetBuildingRevision(building->Revision(),building->Lights());
     MarkDiagnosticStartupProgress();
-    DiagnosticLine("etape=chargement\r\n");FlushDiagnostic();
+    DiagnosticLine("etape=chargement\r\n");if(!territoryTest)FlushDiagnostic();
     graphics.Configure(xr,scene,jobs,contributions);
     DiagnosticLine(graphics.StartupCacheReport());
     StartupCheckpoint("graphics_configured");
@@ -1924,18 +1931,23 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             cluster.adapterVendor,cluster.adapterDevice,cluster.meshes,cluster.sourcePages);
         DiagnosticLine(line);
     }
-    graphics.SetDeveloperMode(!targetMode);
+    graphics.SetDeveloperMode(!targetMode&&!territoryTest);
     orbit.Restore(graphics,atmosphere);
     if(sunTest)sunBenchmark.Start(graphics);
     if(prismTest)prismBenchmark.Start(graphics);
+    if(territoryTest){
+        if(!graphics.SetRenderingOptions(RenderingOptions{})||!graphics.SetDlssScale(0.f))
+            Fail("Territoire rendering options");
+        territory.emplace(*building,building->Pilot().WorktopSpawn());
+    }
     DlssLoop dlssLoop;
-    const bool sessionTraceEnabled=!automated&&!diagnosticLogPath.empty();
+    const bool sessionTraceEnabled=!automated&&!territoryTest&&!diagnosticLogPath.empty();
     SessionTrace sessionTrace;
     Mg2Trace mg2Trace;
     CutSessionTrace cutTrace;
-    graphics.SetCutDiagnostic(sessionTraceEnabled&&!prismTest);
+    graphics.SetCutDiagnostic(sessionTraceEnabled&&!fixedTour);
     graphics.SetOpticalDiagnostic(prismTest);
-    DlssDiagnosticCapture dlssTrace{!sphereDiagnostic&&!diagnosticLogPath.empty()&&!prismTest};
+    DlssDiagnosticCapture dlssTrace{!sphereDiagnostic&&!diagnosticLogPath.empty()&&!fixedTour};
     graphics.SetDlssDiagnostic(dlssTrace.enabled);
     if(automatedDlss){
         DiagnosticLine("dlss_loop=preparation_sdk\r\n");
@@ -1948,7 +1960,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         DiagnosticLine("dlss_loop=natif_avant\r\n");
     }
     std::optional<Feedback> feedback;
-    if(!automated)feedback.emplace(profileFolder/"audio",shuttle.Profiles(),
+    if(!automated&&!territoryTest)feedback.emplace(profileFolder/"audio",shuttle.Profiles(),
                                   StandardVrActions().feedback,shuttleAssets!=nullptr,
                                   std::filesystem::path(config).parent_path()/"audio");
     if(solarCalibration||shuttleCalibration||passageCalibration)calibration->StartSolarSystem();
@@ -1970,13 +1982,14 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         DiagnosticLine("world_version=V1 frame=campus_fixed membrane=absent planets=0 scale=metric_1m sun=orbiting starfield=on far_m=400\r\n");
     }
     // Standard loop only.
-    if(sessionTour&&sessionTraceEnabled&&!diagnostic.mg2&&!sunTest&&!prismTest){
+    if(sessionTour&&sessionTraceEnabled&&!diagnostic.mg2&&!sunTest&&!fixedTour){
         sessionTrace.depthEnabled=true;
         graphics.EnableDepthDiagnostics();
         DiagnosticLine("depth_telemetry=v3 scope=CpuScene.Depth count_every_frames=8 counts=mean_per_sample rejected=instance_frustum_or_occluded_meshlets_before_dispatch timings=mean_per_frame\r\n");
     }
     if(sunTest)mappings.EnableFixedSessionTour(8.);
     if(prismTest)mappings.EnablePrismTour();
+    if(territoryTest)mappings.EnableTerritoryTour();
     if(scene.solarSystem&&!automated){
         if(!navigation.valid||targetMode){
             const auto worktop=building&&diagnostic.mg2?building->Pilot().WorktopSpawn():std::nullopt;
@@ -2007,12 +2020,12 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         mappings.StartSolarSystem();
     }
     MarkDiagnosticStartupProgress();
-    DiagnosticLine("etape=attente_image\r\n");FlushDiagnostic();
+    DiagnosticLine("etape=attente_image\r\n");if(!territoryTest)FlushDiagnostic();
     int64_t menuClick=0;bool finishCapture=false,exitInitiated=false;
     ULONGLONG exitRequestedAt=0;
     bool pageUpHeld=false,pageDownHeld=false,wasAboard=false,hadAvionics=false;
     BasaltStroke laser;
-    LiveCapture liveCapture(config,diagnostic.path,sessionTour||prismTest);
+    LiveCapture liveCapture(config,diagnostic.path,sessionTour||fixedTour);
     size_t tourCheckpoint=0;
     std::array<MembraneHands,SpectacleSphereCount> membraneHands;
     MembranePassages passages;
@@ -2053,7 +2066,11 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         const bool aboard=shuttle.Active();
         if(fixedDiagnosticFraming&&!(shuttleCalibration&&aboard))
             ApplyOasisDiagnosticControllers(frame.input,actions,sphereDiagnostic);
-        if(sunTest||prismTest)ApplyOasisDiagnosticControllers(frame.input,actions,true);
+        const auto territoryCpuStart=territory?QpcCounter():0;
+        const double territoryElapsed=territory?territory->Elapsed():0.;
+        if(territory&&!exitInitiated&&territoryElapsed<TerritoryDuration)
+            territory->Prepare(graphics,frame.input,territoryElapsed);
+        if(sunTest||fixedTour)ApplyOasisDiagnosticControllers(frame.input,actions,true);
         const double prismElapsed=mappings.PrismElapsed();
         if(prismTest&&!exitInitiated)prismBenchmark.Apply(graphics,PrismBlock(prismElapsed));
         passages.Update(frame,sessionTraceEnabled||passageCalibration||shuttleCalibration);
@@ -2071,7 +2088,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             building->Projectiles(graphics.DrainBuildingImpacts());
             // Residency, view reach and building geometry all use metres.
             const float campusFarMeters=local.farClipMeters;
-            building->Tick(world,local.head,float(std::clamp(dt,0.,.075)),
+            building->Tick(world,local.head,territoryTest?0.f:float(std::clamp(dt,0.,.075)),
                 campusFarMeters);
             graphics.SetBuildingRevision(building->Revision(),building->Lights());
             auto& selected=building->Select(local.head.p);
@@ -2088,7 +2105,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             frame.glovePoses[1]=VrGlovePose(frame.input.PoseState(actions.handPose,1),1);
             frame.rightTool=fixedDiagnosticFraming?RightHandTool::Basalt:orbit.EquippedTool();
         }
-        const bool liveInput=!automated&&!buildingTour&&!sessionTour&&!sunTest&&!prismTest&&!exitInitiated&&frame.input.focused;
+        const bool liveInput=!automated&&!buildingTour&&!sessionTour&&!sunTest&&!fixedTour&&!exitInitiated&&frame.input.focused;
         const bool ignition=shuttle.ConsumeIgnition();
         const bool booting=shuttle.AvionicsOn()&&!hadAvionics;
         hadAvionics=shuttle.AvionicsOn();
@@ -2109,7 +2126,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 laser.EndGpuSweep();
             }
         }else if(building)building->EndLaser();
-        if(!automated&&!exitInitiated&&!sessionTour&&!prismTest){
+        if(!automated&&!exitInitiated&&!sessionTour&&!fixedTour){
             const bool pageUp=(GetAsyncKeyState(VK_PRIOR)&0x8000)!=0;
             const bool pageDown=(GetAsyncKeyState(VK_NEXT)&0x8000)!=0;
             if(building&&scene.solarSystem){
@@ -2146,7 +2163,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 membraneHands[owner].Update(frame,local,*feedback,xr,liveInput&&!aboard);
             }
         }
-        if(!sessionTour&&!prismTest)if(const auto saved=liveCapture.Poll()){
+        if(!sessionTour&&!fixedTour)if(const auto saved=liveCapture.Poll()){
             if(*saved&&feedback&&!exitInitiated)
                 feedback->Emit(xr,frame.input.head,{FeedbackCue::CaptureSaved,0u,frame.input.time,frame.input.frameId});
             else if(!*saved)DiagnosticLine("capture_live=echec_ecriture\r\n");
@@ -2168,7 +2185,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         }
         if(sessionTraceEnabled)MarkSession(SessionStage::Prepare);
         if(building&&scene.solarSystem)building->AtmosphereContext(frame.input);
-        if(building&&scene.solarSystem&&!automated&&!buildingTour&&!sessionTour&&!sunTest&&!prismTest&&!targetMode){
+        if(building&&scene.solarSystem&&!automated&&!buildingTour&&!sessionTour&&!sunTest&&!fixedTour&&!targetMode){
             // Tick has already selected the local territory with the original
             // streaming reach. Only the camera and compositor use this extent.
             const float residencyReach=frame.input.farClipMeters;
@@ -2185,8 +2202,9 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             materialRevision=materialProfiles.Revision();
         }
         started=stamp();
-        frame.headLockedDiagnostic=sphereDiagnostic||buildingTour.has_value()||sunTest||sessionTour||prismTest;
+        frame.headLockedDiagnostic=sphereDiagnostic||buildingTour.has_value()||sunTest||sessionTour||fixedTour;
         frame.captureOnly=captureView!=nullptr;
+        if(territory&&(exitInitiated||territory->Elapsed()>=TerritoryDuration))frame.render=false;
         timing.prepared=frame.render&&graphics.Prepare(frame.input);
         if(frame.render&&!timing.prepared)frame.presentationFailure=XRFrameFailure::Prepare;
         timing.ms[DlssDiagnosticCapture::Prepare]=dlssTrace.Elapsed(started);
@@ -2200,17 +2218,17 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
             const bool acquired=frame.tracked&&xr.AcquireSwapchains(frame);
             timing.ms[DlssDiagnosticCapture::Acquire]=dlssTrace.Elapsed(started);
             if(acquired){
-                if(!sunTest&&!prismTest&&!sessionTour&&!buildingTour&&(!automated||captureLoopFrame||
+                if(!sunTest&&!fixedTour&&!sessionTour&&!buildingTour&&(!automated||captureLoopFrame||
                     (calibration&&calibration->CaptureReady()))&&!exitInitiated)
                     diagnostic.BeforeRender(graphics,automated,diagnostic.mg2&&building&&
                         frame.input.insideSphere==0u&&building->ResidentWorktops()>0u);
-                if(feedback&&!sessionTour&&!prismTest&&!automated&&!exitInitiated)liveCapture.Prepare(graphics);
+                if(feedback&&!sessionTour&&!fixedTour&&!automated&&!exitInitiated)liveCapture.Prepare(graphics);
                 started=stamp();
                 if(sessionTraceEnabled)MarkSession(SessionStage::Render);
-                if(sessionTraceEnabled&&!sessionTour&&!prismTest)cutTrace.Collect(graphics);
+                if(sessionTraceEnabled&&!sessionTour&&!fixedTour)cutTrace.Collect(graphics);
                 graphics.Render(frame);
-                if(sessionTraceEnabled&&!sessionTour&&!prismTest)sessionTrace.LogDepthMode(graphics);
-                if(feedback&&!sessionTour&&!prismTest&&!automated)liveCapture.Submitted(graphics);
+                if(sessionTraceEnabled&&!sessionTour&&!fixedTour)sessionTrace.LogDepthMode(graphics);
+                if(feedback&&!sessionTour&&!fixedTour&&!automated)liveCapture.Submitted(graphics);
                 timing.ms[DlssDiagnosticCapture::Render]=dlssTrace.Elapsed(started);
             }
         }
@@ -2240,14 +2258,14 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
                 dlssLoop.Update(graphics,frame.submitted,before);
                 if(dlssLoop.CaptureReady())diagnostic.dlssLoopCompleted=dlssLoop.activeFrame;
             }
-            if(!sessionTour&&!sunTest&&!prismTest&&!sphereDiagnostic&&(!automatedDlss||dlssLoop.phase!=DlssLoop::Phase::Native))
+            if(!sessionTour&&!sunTest&&!fixedTour&&!sphereDiagnostic&&(!automatedDlss||dlssLoop.phase!=DlssLoop::Phase::Native))
                 graphics.UpdateDlss(scaleStep);
-            if(!sessionTour&&!sunTest&&!prismTest&&!sphereDiagnostic&&!exitInitiated&&!orbit.Apply(graphics,atmosphere))DiagnosticLine("orbit_profil=echec_ecriture\r\n");
+            if(!sessionTour&&!sunTest&&!fixedTour&&!sphereDiagnostic&&!exitInitiated&&!orbit.Apply(graphics,atmosphere))DiagnosticLine("orbit_profil=echec_ecriture\r\n");
             if(dlssTrace.enabled||sessionTraceEnabled){
                 timing.ms[DlssDiagnosticCapture::Update]=dlssTrace.Elapsed(started);
                 const auto state=graphics.GetDlssDiagnostic();
                 if(dlssTrace.enabled)dlssTrace.Record(timing,before,state,frame.input.frameId);
-                if(sessionTraceEnabled&&!sunTest&&!prismTest){
+                if(sessionTraceEnabled&&!sunTest&&!fixedTour){
             
                     const auto metrics=graphics.GetMetrics();
                     sessionTrace.Record(timing,state,metrics,frame.input.frameId,graphics,frame.viewCount,
@@ -2265,7 +2283,19 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         if(frame.submitted)
             navigation={frame.input.head,true,frame.input.insideSphere!=Invalid};
         if(sessionTraceEnabled)MarkSession(SessionStage::Capture);
-        if(prismTest){
+        if(territory){
+            if(frame.submitted){
+                territory->StartClock();
+                frameSeen.store(true,std::memory_order_release);
+            }
+            if(!exitInitiated){
+                territory->Record(graphics,frame,territoryElapsed,territoryCpuStart);
+                if(territory->Elapsed()>=TerritoryDuration){
+                    diagnostic.territoryCompleted=true;
+                    finishCapture=true;
+                }
+            }
+        }else if(prismTest){
             sessionFrame.store(frame.input.frameId,std::memory_order_relaxed);
             if(frame.submitted){frameSeen.store(true,std::memory_order_release);mappings.StartPrismTour();}
             if(!exitInitiated){
@@ -2298,11 +2328,12 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(sessionTraceEnabled)MarkSession(SessionStage::Shutdown);
     graphics.WaitIdle();
     if(calibration){calibration->Collect(graphics);diagnostic.sphereBaselineCompleted=calibration->Write();}
-    if(sessionTraceEnabled){cutTrace.Collect(graphics,true);if(!sunTest&&!prismTest){sessionTrace.CollectOptical(graphics,true);sessionTrace.CollectDepth(graphics,true);}}
+    if(sessionTraceEnabled){cutTrace.Collect(graphics,true);if(!sunTest&&!fixedTour){sessionTrace.CollectOptical(graphics,true);sessionTrace.CollectDepth(graphics,true);}}
     if(sessionTour)diagnostic.loopCompleted=sessionTrace.FinishLoop();
     if(prismTest)diagnostic.prismCompleted=prismBenchmark.Finish(graphics,diagnostic.prismCompleted);
+    if(territory)diagnostic.territoryCompleted=territory->Finish(graphics,diagnostic.territoryCompleted);
     graphics.UnloadScene();
-    if(!automated&&!sunTest&&!prismTest&&!shuttle.SaveSettings())DiagnosticLine("navette_profil=echec_ecriture\r\n");
+    if(!automated&&!sunTest&&!fixedTour&&!shuttle.SaveSettings())DiagnosticLine("navette_profil=echec_ecriture\r\n");
     return LoopResult::Exit;
 }
 
@@ -2419,6 +2450,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
         const std::wstring& capturePath,bool interactive,bool desktop,bool automatedDlss,
         bool solarCalibration,bool shuttleCalibration,uint32_t passageOwner,
         bool buildingPilot,bool buildingLoop,bool mg2){
+    const bool territoryTest=LaunchSessionMode()==SessionMode::Territory;
     mg2StartupProgress=(mg2||LaunchSessionMode()!=SessionMode::Default)?&startupProgress:nullptr;
     const auto launchStarted=GetTickCount64();
     ComScope com;JobSystem jobs;jobs.Start();
@@ -2426,9 +2458,9 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     const auto config=AssetPath(L"input.ini");
     const bool sphereDiagnostic=solarCalibration||shuttleCalibration||passageOwner!=Invalid;
     if(sphereDiagnostic)Fail("V1: orbital and membrane calibration removed");
-    OrbitProfile orbitProfile(automatedDlss||sphereDiagnostic?std::wstring{}:config);
+    OrbitProfile orbitProfile(automatedDlss||sphereDiagnostic||territoryTest?std::wstring{}:config);
     const auto controlProfile=orbitProfile.LocalFile().parent_path()/"controls.ini";
-    if(!input.LoadConfiguration(config,automatedDlss||sphereDiagnostic?std::wstring{}:controlProfile.wstring()))
+    if(!input.LoadConfiguration(config,automatedDlss||sphereDiagnostic||territoryTest?std::wstring{}:controlProfile.wstring()))
         DiagnosticLine("controls_ini=repli_usine\r\n");
     const bool logo=worldPath.empty();
     MaterialProfiles materialProfiles;
@@ -2447,13 +2479,13 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     char density[4]{};
     const auto densityLength=GetEnvironmentVariableA("OASIS_MG2_FOREST",density,DWORD(sizeof(density)));
     const std::string_view densitySetting(density,densityLength<sizeof(density)?densityLength:0u);
-    const unsigned multiplier=densitySetting=="80"?1u:densitySetting=="320"?4u:2u;
+    const unsigned multiplier=!territoryTest&&densitySetting=="80"?1u:!territoryTest&&densitySetting=="320"?4u:2u;
     // ARB-3 ships the four botanical life-stage morphologies by default.
     // An explicit single-variant setting remains available for isolation.
     char canopyVariantsSetting[8]{};
     const auto canopyLength=GetEnvironmentVariableA("OASIS_CANOPY_VARIANTS",canopyVariantsSetting,DWORD(sizeof(canopyVariantsSetting)));
     const std::string_view canopySetting(canopyVariantsSetting,canopyLength<sizeof(canopyVariantsSetting)?canopyLength:0u);
-    const unsigned canopyVariants=canopySetting=="1"?1u:4u;
+    const unsigned canopyVariants=!territoryTest&&canopySetting=="1"?1u:4u;
     std::filesystem::path campusKey;
     const auto campusStart=GetTickCount64();
     if(mg2||(useCampus&&!sphereDiagnostic&&!buildingLoop&&std::filesystem::exists(pack/"pack.json"))){
@@ -2470,7 +2502,7 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     WorldRegistry world;
     std::optional<BuildingCampus> building;
     if(useCampus){
-        const auto save=buildingLoop?std::filesystem::path{}:local.parent_path()/"buildings"/"oasis-metric";
+        const auto save=buildingLoop||territoryTest?std::filesystem::path{}:local.parent_path()/"buildings"/"oasis-metric";
         try{building.emplace(AssetPath(L"buildings/oasis"),save);}
         catch(const std::bad_alloc&){throw;}
         catch(const std::exception& e){
@@ -2660,6 +2692,8 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
             DiagnosticLine(line);
         }
         const auto& activeScene=campusScene?*campusScene:source;
+        if(territoryTest&&(!replacesLowVegetation||!worktop||!pbr||activeScene.assetDegraded))
+            Fail("Territoire requires the authored forest and furnished campus");
         const auto result=desktop?RunDesktop(stop,frameSeen,window,input,activeScene,world,jobs,contributions,
                   logo,developer,navigation,diagnostic,orbitProfile,materialProfiles,building?&*building:nullptr):
             RunVr(stop,frameSeen,window,input,config,activeScene,world,jobs,
@@ -2687,6 +2721,10 @@ int Run(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,std::atomic<ULONGLO
     if(IsSessionForwardTour(LaunchSessionMode())){
         DiagnosticLine(diagnostic.loopCompleted?"resultat=termine\r\n":"resultat=loop_invalide\r\n");
         return diagnostic.loopCompleted?0:1;
+    }
+    if(territoryTest){
+        DiagnosticLine(diagnostic.territoryCompleted?"resultat=termine\r\n":"resultat=territoire_incomplet\r\n");
+        return diagnostic.territoryCompleted?0:1;
     }
     if(LaunchSessionMode()==SessionMode::Prism){
         DiagnosticLine(diagnostic.prismCompleted?"resultat=termine\r\n":"resultat=prism_incomplet\r\n");

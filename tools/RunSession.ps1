@@ -2,8 +2,8 @@ param([switch]$Build, [string]$Mode = 'cosmos')
 $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($Mode)) { $Mode = 'cosmos' }
 $Mode = $Mode.ToLowerInvariant()
-if ($Mode -notin @('cosmos','foret','bureau','hall','loop','walk','sun','prism','target')) {
-    Write-Host 'Usage: pull_compile_run.bat ou run.bat cosmos|foret|bureau|loop|walk|sun|prism|target'
+if ($Mode -notin @('cosmos','foret','bureau','hall','loop','walk','sun','prism','target','territoire')) {
+    Write-Host 'Usage: pull_compile_run.bat ou run.bat cosmos|foret|bureau|loop|walk|sun|prism|target|territoire'
     exit 2
 }
 $repo = Split-Path -Parent $PSScriptRoot
@@ -41,8 +41,9 @@ try {
         $identity = Get-Content -LiteralPath $buildIdentity -Raw | ConvertFrom-Json
         if ($identity.sha256 -eq $exeHash) { $env:OASIS_SOURCE_REVISION = $identity.revision }
     }
+    $benchmark = $Mode -in @('loop','walk','prism','territoire')
     if ($env:OASIS_SOURCE_REVISION -ne $checkoutRevision) {
-        if ($Mode -in @('loop','walk','prism')) { throw "Diagnostic $Mode refuse : executable non identifie ou different du HEAD. Utiliser pull_compile_run.bat $Mode." }
+        if ($benchmark) { throw "Diagnostic $Mode refuse : executable non identifie ou different du HEAD. Utiliser pull_compile_run.bat $Mode." }
         Write-Host 'Attention : executable non identifie ou different du HEAD. Compilation volontairement ignoree.'
     }
     $env:OASIS_SOURCE_DIRTY = '0'
@@ -50,8 +51,14 @@ try {
     if ($LASTEXITCODE -ne 0) { $env:OASIS_SOURCE_DIRTY = '1' }
     & git diff --cached --quiet
     if ($LASTEXITCODE -ne 0) { $env:OASIS_SOURCE_DIRTY = '1' }
-    if ($Mode -in @('loop','walk','prism') -and $env:OASIS_SOURCE_DIRTY -ne '0') { throw 'Loop refuse : sources modifiees. Committer avant le diagnostic.' }
+    if ($benchmark -and $env:OASIS_SOURCE_DIRTY -ne '0') { throw "Diagnostic $Mode refuse : sources modifiees." }
     $env:OASIS_SESSION_MODE = $Mode
+    if ($Mode -eq 'territoire') {
+        $env:OASIS_DEPTH_MODE = 'selective'
+        $env:OASIS_VISIBILITY_DIAG = $null
+        $env:OASIS_MG2_CLUSTER_API = 'auto'
+        $env:OASIS_MG2_QUEUE_PRIORITY = $null
+    }
     if ([string]::IsNullOrWhiteSpace($env:OASIS_BAKE_CACHE)) {
         $env:OASIS_BAKE_CACHE = Join-Path $repo '.oasis-local\cache\session-bake'
     }
@@ -65,12 +72,21 @@ try {
     $relative = "diagnostics/sessions/$stamp-$Mode-$PID"
     $folder = Join-Path $repo $relative
     New-Item -ItemType Directory -Path $folder | Out-Null
-    if ($Mode -notin @('loop','walk','sun','prism')) { New-Item -ItemType Directory -Path (Join-Path $folder 'live') | Out-Null }
+    if (!$benchmark -and $Mode -ne 'sun') { New-Item -ItemType Directory -Path (Join-Path $folder 'live') | Out-Null }
     Write-Host "Session : $folder"
     $process = Start-Process -FilePath $exe -WorkingDirectory $bin -ArgumentList @('--interactive','--diagnostic',('"' + $folder + '"')) -Wait -PassThru
     $code = $process.ExitCode
     $metadata = [ordered]@{mode=$Mode;revision=$env:OASIS_SOURCE_REVISION;checkout_revision=$checkoutRevision;exe_sha256=$exeHash;dirty=$env:OASIS_SOURCE_DIRTY;exit_code=$code;date=(Get-Date).ToString('o')}
     $metadata | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $folder 'session.json') -Encoding UTF8
+    if ($Mode -eq 'territoire') {
+        $summary = Join-Path $folder 'OASIS.log'
+        if (Test-Path -LiteralPath $summary) {
+            Get-Content -LiteralPath $summary | Where-Object { $_ -match '^(territoire_|resultat=|erreur=)' } |
+                ForEach-Object { Write-Host $_ }
+        }
+        Write-Host "Fin OASIS ($code). Journal : $summary"
+        exit $code
+    }
     Write-Host "Fin OASIS ($code). Journaux et captures : $folder"
     # Consolidate actual runtime material omissions in the post-compile ticket.
     # The session commit continues to contain logs and metadata only.

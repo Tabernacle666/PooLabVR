@@ -7,7 +7,8 @@
 #include <array>
 
 namespace OASIS {
-enum class SessionMode { Default, Cosmos, Forest, Hall, Loop, Sun, Walk, Prism, Target };
+enum class SessionMode { Default, Cosmos, Forest, Hall, Loop, Sun, Walk, Prism, Target, Territory };
+inline constexpr ULONGLONG TerritoryStopAfterMs=87000u;
 inline SessionMode LaunchSessionMode() noexcept {
     wchar_t value[16]{};
     const DWORD n=GetEnvironmentVariableW(L"OASIS_SESSION_MODE",value,DWORD(std::size(value)));
@@ -20,6 +21,7 @@ inline SessionMode LaunchSessionMode() noexcept {
     if(!std::wcscmp(value,L"sun"))return SessionMode::Sun;
     if(!std::wcscmp(value,L"prism"))return SessionMode::Prism;
     if(!std::wcscmp(value,L"target"))return SessionMode::Target;
+    if(!std::wcscmp(value,L"territoire"))return SessionMode::Territory;
     return SessionMode::Default;
 }
 inline constexpr double SessionTourSeconds=24.;

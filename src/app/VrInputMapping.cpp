@@ -116,6 +116,8 @@ VrTravel StandardVrInput::Locomotion(const FrameInput& input,const Pose& raw,FXM
 }
 void StandardVrInput::SolarFrame(FrameInput& input,const Pose* raw,XMFLOAT4X4& trackingToWorld,
                                 XMFLOAT2 turn,bool recenter,bool boardShuttle,int liftStep){
+    // AppSession supplies the benchmark pose before campus residency and XR late locate.
+    if(territoryTour_)return;
     input.solarTime=(solarOrigin_||(raw&&input.focused))?
         SolarElapsed(input.targetDisplayTime,solarOrigin_):0.;
     if(sessionTour_){

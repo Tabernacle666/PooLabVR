@@ -49,8 +49,10 @@ public:
     }
     void SetExpansionSource(const SceneData& scene,unsigned density){expansion_.Capture(scene,density);}
     ExpansionFlora& GrowthFlora(){return expansion_.Flora();}
-    bool GrowContinent(){return expansion_.Grow();}
+    bool GrowContinent(uint32_t count=1u){return expansion_.Grow(count);}
     uint32_t ContinentSteps()const noexcept{return expansion_.Steps();}
+    uint32_t PublishedContinentSteps()const noexcept{return expansion_.PublishedSteps();}
+    uint64_t ContinentDetailRoutes()const noexcept{return expansion_.DetailRoutes();}
     float OpticalFarMeters(XMFLOAT3 viewer,float minimum)const noexcept{
         double reach=expansion_.OpticalReach(viewer);
         for(const auto& letter:letters_){

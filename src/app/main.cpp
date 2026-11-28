@@ -32,6 +32,13 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
         else OASIS::Fail("Unknown option");
     }
     LocalFree(args);
+    const bool territory=OASIS::LaunchSessionMode()==OASIS::SessionMode::Territory;
+    if(territory){
+        if(desktop||automatedDlss||solarCalibration||passageCalibration||shuttleCalibration||buildingLoop||mg2||
+           !worldPath.empty()||diagnosticDirectory.empty())
+            OASIS::Fail("Territoire requires VR OASIS and --diagnostic");
+        interactive=true;
+    }
     if(OASIS::LaunchSessionMode()==OASIS::SessionMode::Target){
         if(desktop||automatedDlss||solarCalibration||passageCalibration||shuttleCalibration||buildingLoop||mg2||!worldPath.empty())
             OASIS::Fail("Target requires free VR on OASIS");
@@ -74,6 +81,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
             case OASIS::SessionMode::Walk:OASIS::DiagnosticLine("session_mode=walk\r\n");break;
             case OASIS::SessionMode::Sun:OASIS::DiagnosticLine("session_mode=sun\r\n");break;
             case OASIS::SessionMode::Prism:OASIS::DiagnosticLine("session_mode=prism\r\n");break;
+            case OASIS::SessionMode::Territory:OASIS::DiagnosticLine("session_mode=territoire\r\n");break;
             default:break;
         }
     }
@@ -111,7 +119,13 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
             DispatchMessageW(&message);
         }
         if(GetAsyncKeyState(VK_ESCAPE)&0x8000)stop.store(true,std::memory_order_relaxed);
-        if(interactive)OASIS::ReportSessionStall(lastStallReport,stalled);
+        if(interactive&&!territory)OASIS::ReportSessionStall(lastStallReport,stalled);
+        if(territory){
+            const auto started=OASIS::territoryStartedTick.load(std::memory_order_acquire);
+            if(started&&GetTickCount64()-started>=OASIS::TerritoryStopAfterMs&&
+               !stop.exchange(true,std::memory_order_relaxed))
+                OASIS::DiagnosticLine("erreur=territoire_delai\r\n");
+        }
         const bool waitingForFirstFrame=interactive&&!frameSeen.load(std::memory_order_acquire);
         const auto lastStartupProgress=startupProgress.load(std::memory_order_acquire);
         const bool startupExpired=waitingForFirstFrame&&GetTickCount64()-lastStartupProgress>=(sessionLaunch?900000ull:60000ull);
