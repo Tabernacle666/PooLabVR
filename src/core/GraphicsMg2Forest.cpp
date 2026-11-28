@@ -365,7 +365,7 @@ struct Graphics::Impl::ForestPreparedGeneration {
     std::array<PackedView,ForestGeneration::Addresses> layouts{};
     PackedView bounds{},cameraBoxes{};
     // The cut demands physical pages, not a relocated vertex/index buffer.
-    std::set<uint32_t> sourceTiles;
+    std::set<ForestSourceTile> sourceTiles;
     uint32_t sourceUniqueClusters{};
     std::vector<ForestPartRange> parts;
     uint32_t triangleCount{};
@@ -402,22 +402,21 @@ Graphics::Impl::PackForestCut(ForestSelectionWork& work){
     // Catalog offsets remain stable across all cuts. Collect exact tile
     // demand (both ends of a straddling vertex/index range are included).
     constexpr uint64_t TileBytes=Mg2Pages::SourceTileBytes;
-    const auto indexBase=work.pages->SourceIndexOffset();
     std::set<uint32_t> uniqueSources;
-    const auto requireRange=[&](uint64_t first,uint64_t bytes){
-        if(!bytes||first>=work.pages->SourceVirtualBytes()||
-           bytes>work.pages->SourceVirtualBytes()-first) return false;
+    const auto requireRange=[&](ForestSourceStream stream,uint64_t first,uint64_t bytes){
+        const auto extent=work.pages->SourceBytes(stream);
+        if(!bytes||first>=extent||bytes>extent-first)return false;
         for(uint64_t t=first/TileBytes;t<=(first+bytes-1u)/TileBytes;++t){
             if(t>UINT32_MAX)return false;
-            prepared->sourceTiles.insert(uint32_t(t));
+            prepared->sourceTiles.emplace(stream,uint32_t(t));
         }
         return true;
     };
     for(const auto& cluster:cut.clusters){
         if(!uniqueSources.insert(cluster.sourceFirstVertex).second)continue;
-        if(!requireRange(uint64_t(cluster.sourceFirstVertex)*sizeof(Vertex),
+        if(!requireRange(ForestSourceStream::Vertices,uint64_t(cluster.sourceFirstVertex)*sizeof(Vertex),
                          uint64_t(cluster.vertexCount)*sizeof(Vertex))||
-           !requireRange(indexBase+uint64_t(cluster.sourceFirstIndex)*sizeof(uint32_t),
+           !requireRange(ForestSourceStream::Indices,uint64_t(cluster.sourceFirstIndex)*sizeof(uint32_t),
                          uint64_t(cluster.indexCount)*sizeof(uint32_t))){
             prepared->failure="a06_source_range";return prepared;
         }
@@ -1142,7 +1141,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                 forestStatus.blasBuilt+=uint32_t(pending.newBlasParts.size());
                 forestStatus.blasReused+=pending.variants-uint32_t(pending.newBlasParts.size());
             }
-            if(pending.immutableGeometry)forestStatus.immutableGeometryBytes=pending.sourceResidentBytes;
+            if(pending.immutableVertices&&pending.immutableIndices)forestStatus.immutableGeometryBytes=pending.sourceResidentBytes;
             if(pending.geometryUploadBytes)++forestStatus.immutableGeometryUploads;
             forestStatus.geometryUploadBytes+=pending.geometryUploadBytes;
             forestStatus.clasBytes=pending.clasCapacity;
@@ -1308,14 +1307,14 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                         // Log only validated geometry and do not traverse the
                         // source spans or perform diagnostic I/O on the VR thread.
                         const auto& source=*work->candidate;
-                        if(source.immutableGeometry){
+                        if(source.immutableVertices&&source.immutableIndices){
                             const UINT64 catalog=UINT64(forestHierarchy->VertexCount())*sizeof(Vertex)+
                                 UINT64(forestHierarchy->IndexCount())*sizeof(uint32_t);
                             char line[768];
                             std::snprintf(line,sizeof(line),"mg2_a06_residency validated=1 persistent=1 catalog_bytes=%llu "
                                 "resident_bytes=%llu demand_bytes=%llu unique_clusters=%u selected_cluster_refs=%u "
                                 "uploaded_bytes=%llu retained_bytes=%llu evicted_bytes=%llu reused_gpu_bytes=0 "
-                                "mapped_blocks=%llu gpu_va=%llu\r\n",
+                                "mapped_blocks=%llu gpu_va=%llu index_gpu_va=%llu vertex_virtual_bytes=%llu index_virtual_bytes=%llu\r\n",
                                 static_cast<unsigned long long>(catalog),
                                 static_cast<unsigned long long>(source.sourceResidentBytes),
                                 static_cast<unsigned long long>(source.sourceDemandBytes),
@@ -1324,7 +1323,10 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                                 static_cast<unsigned long long>(source.sourceDemandBytes-source.geometryUploadBytes),
                                 static_cast<unsigned long long>(source.sourceEvictedBytes),
                                 static_cast<unsigned long long>(source.sourceBlocks.size()),
-                                static_cast<unsigned long long>(source.immutableGeometry->GetGPUVirtualAddress()));
+                                static_cast<unsigned long long>(source.immutableVertices->GetGPUVirtualAddress()),
+                                static_cast<unsigned long long>(source.immutableIndices->GetGPUVirtualAddress()),
+                                static_cast<unsigned long long>(source.immutableVertices->GetDesc().Width),
+                                static_cast<unsigned long long>(source.immutableIndices->GetDesc().Width));
                             DiagnosticLine(line);
                             std::snprintf(line,sizeof(line),
                                 "mg2_a07_shared validated=1 clusters=%u raster_meshlets=%u triangles=%u "
@@ -1988,56 +1990,94 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         return false;
     }
     if(!forestHierarchy)return false;
-    // One sparse buffer per hierarchy. Virtual extent follows the catalog;
-    // only selected 64 KiB pages are backed by DEFAULT heaps. No persistent
-    // geometry relocation, descriptor indirection or raster ABI change.
+    // LOD-23: the vertex and index streams have independent stable GPU
+    // addresses. Reserve virtual capacity, map only demanded physical tiles.
+    // Keep the shader ABI (element offsets) and all CLAS/BLAS identities.
     constexpr UINT64 TileBytes=Mg2Pages::SourceTileBytes;
     static_assert(TileBytes==D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES);
     auto& pool=forestSourcePool;
-    const auto virtualBytes=forestHierarchy->SourceVirtualBytes();
-    if(!virtualBytes||prepared.sourceTiles.empty()||virtualBytes/TileBytes>UINT32_MAX){
+    if(prepared.sourceTiles.empty()){
         work.result.lastFailure="a06_source_abi";return false;
     }
-    if(!pool.resource){
+    if(!pool.Resource(ForestSourceStream::Vertices)||!pool.Resource(ForestSourceStream::Indices)){
         D3D12_FEATURE_DATA_D3D12_OPTIONS options{};
         if(FAILED(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS,&options,sizeof(options)))||
            options.TiledResourcesTier<D3D12_TILED_RESOURCES_TIER_2){
             work.result.lastFailure="a06_tiled_resources_tier";return false;
         }
-        const auto desc=Buffer(virtualBytes);
-        const auto result=device->CreateReservedResource(&desc,D3D12_RESOURCE_STATE_COMMON,
-            nullptr,IID_PPV_ARGS(&pool.resource));
-        if(FAILED(result)){work.result.lastFailure="allocation_source_sparse";work.result.buildCode=int(result);return false;}
-        UINT actualTiles=0;
-        device->GetResourceTiling(pool.resource.Get(),&actualTiles,nullptr,nullptr,nullptr,0,nullptr);
-        if(actualTiles!=virtualBytes/TileBytes){
-            pool.resource.Reset();work.result.lastFailure="a06_source_tile_layout";return false;
-        }
     }
-    output.immutableGeometry=pool.resource;
-    output.immutableIndexOffset=forestHierarchy->SourceIndexOffset();
+    const auto ensureStream=[&](ForestSourceStream stream){
+        auto& resource=pool.Resource(stream);
+        const UINT64 required=forestHierarchy->SourceVirtualBytes(stream);
+        if(!required||required/TileBytes>UINT32_MAX){
+            work.result.lastFailure="a06_source_abi";return false;
+        }
+        if(resource){
+            // Never relocate or silently replace a stream still referenced
+            // by a published generation. The open-catalog producer must
+            // admit new segments within capacity or provide another arena.
+            if(required<=resource->GetDesc().Width)return true;
+            work.result.lastFailure="lod23_source_virtual_capacity";return false;
+        }
+        D3D12_FEATURE_DATA_GPU_VIRTUAL_ADDRESS_SUPPORT va{};
+        UINT64 target=required;
+        if(SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_GPU_VIRTUAL_ADDRESS_SUPPORT,&va,sizeof(va)))&&
+           va.MaxGPUVirtualAddressBitsPerResource){
+            const auto bits=std::min(va.MaxGPUVirtualAddressBitsPerResource,63u);
+            const UINT64 deviceLimit=(UINT64(1)<<bits)&~(TileBytes-1u);
+            target=std::max(required,std::min<UINT64>(deviceLimit,Mg2Pages::SourceAddressLimit(stream)));
+        }
+        // The ABI/device limit is virtual, not a physical memory budget.
+        // If the driver cannot reserve it, retry smaller virtual extents,
+        // down to the original catalog size. Never reduce live geometry.
+        HRESULT result=E_FAIL;
+        for(;;){
+            const auto desc=Buffer(target);
+            ComPtr<ID3D12Resource> candidate;
+            result=device->CreateReservedResource(&desc,D3D12_RESOURCE_STATE_COMMON,
+                nullptr,IID_PPV_ARGS(&candidate));
+            if(SUCCEEDED(result)){
+                UINT actualTiles=0;
+                device->GetResourceTiling(candidate.Get(),&actualTiles,nullptr,nullptr,nullptr,0,nullptr);
+                if(actualTiles==target/TileBytes){
+                    resource=std::move(candidate);
+                    return true;
+                }
+                result=E_FAIL;
+            }
+            if(target==required)break;
+            target=std::max(required,(target/2u)&~(TileBytes-1u));
+        }
+        work.result.lastFailure="allocation_source_sparse";
+        work.result.buildCode=int(result);return false;
+    };
+    if(!ensureStream(ForestSourceStream::Vertices)||!ensureStream(ForestSourceStream::Indices))return false;
+    output.immutableVertices=pool.Resource(ForestSourceStream::Vertices);
+    output.immutableIndices=pool.Resource(ForestSourceStream::Indices);
     output.sourceUniqueClusters=prepared.sourceUniqueClusters;
     output.sourceDemandBytes=UINT64(prepared.sourceTiles.size())*TileBytes;
-    const auto lookup=[&](uint32_t tile)->std::shared_ptr<ForestSourceBlock>{
+    const auto lookup=[&](ForestSourceTile tile)->std::shared_ptr<ForestSourceBlock>{
         auto it=pool.blocks.upper_bound(tile);
         if(it==pool.blocks.begin())return {};
         --it;
-        return it->second->ready&&uint64_t(tile)-it->first<it->second->count?it->second:nullptr;
+        const auto& block=it->second;
+        return block->ready&&block->stream==tile.first&&tile.second>=block->first&&
+            uint64_t(tile.second)-block->first<block->count?block:nullptr;
     };
     const auto mapBlock=[&](const ForestSourceBlock& block,bool remove){
         const D3D12_TILED_RESOURCE_COORDINATE coord{block.first,0,0,0};
         const D3D12_TILE_REGION_SIZE region{block.count,FALSE,0,0,0};
         const auto flag=remove?D3D12_TILE_RANGE_FLAG_NULL:D3D12_TILE_RANGE_FLAG_NONE;
         const UINT offset=0,count=block.count;
-        forestBuildQueue.queue->UpdateTileMappings(pool.resource.Get(),1,&coord,&region,
+        forestBuildQueue.queue->UpdateTileMappings(pool.Resource(block.stream).Get(),1,&coord,&region,
             remove?nullptr:block.heap.Get(),1,&flag,remove?nullptr:&offset,&count,D3D12_TILE_MAPPING_FLAG_NONE);
     };
-    std::vector<uint32_t> missingTiles;
-    std::set<uint32_t> heldBlocks;
+    std::vector<ForestSourceTile> missingTiles;
+    std::set<ForestSourceTile> heldBlocks;
     for(const auto tile:prepared.sourceTiles){
         auto existing=lookup(tile);
         if(!existing){missingTiles.push_back(tile);continue;}
-        if(heldBlocks.insert(existing->first).second)output.sourceBlocks.push_back(std::move(existing));
+        if(heldBlocks.emplace(existing->stream,existing->first).second)output.sourceBlocks.push_back(std::move(existing));
     }
     // Retire only blocks no current, warm or in-flight generation owns.
     // Unmap on the producer queue and wait there before releasing the heaps.
@@ -2066,7 +2106,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         }
         const auto uploadBegin=QpcCounter();
         for(size_t i=0;i<missingTiles.size();++i)
-            forestHierarchy->PackSourceTile(UINT64(missingTiles[i])*TileBytes,
+            forestHierarchy->PackSourceTile(missingTiles[i].first,UINT64(missingTiles[i].second)*TileBytes,
                 std::span<std::byte>(static_cast<std::byte*>(mapped)+i*TileBytes,size_t(TileBytes)));
         staging->Unmap(0,nullptr);
         work.uploadMs+=float(1000.*QpcSeconds(QpcCounter()-uploadBegin));
@@ -2076,9 +2116,11 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         std::vector<std::shared_ptr<ForestSourceBlock>> added;
         for(size_t i=0;i<missingTiles.size();){
             size_t end=i+1;
-            while(end<missingTiles.size()&&end-i<TilesPerHeap&&missingTiles[end]==missingTiles[end-1]+1u)++end;
+            while(end<missingTiles.size()&&end-i<TilesPerHeap&&
+                  missingTiles[end].first==missingTiles[i].first&&
+                  uint64_t(missingTiles[end].second)==uint64_t(missingTiles[end-1].second)+1u)++end;
             auto b=std::make_shared<ForestSourceBlock>();
-            b->first=missingTiles[i];b->count=uint32_t(end-i);
+            b->stream=missingTiles[i].first;b->first=missingTiles[i].second;b->count=uint32_t(end-i);
             D3D12_HEAP_DESC heap{};
             heap.SizeInBytes=UINT64(b->count)*TileBytes;
             heap.Properties=Heap(D3D12_HEAP_TYPE_DEFAULT);
@@ -2099,15 +2141,15 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         UINT64 cursor=0;
         for(const auto& b:added){
             const UINT64 bytes=UINT64(b->count)*TileBytes;
-            uploadCommands.list->CopyBufferRegion(pool.resource.Get(),UINT64(b->first)*TileBytes,
+            uploadCommands.list->CopyBufferRegion(pool.Resource(b->stream).Get(),UINT64(b->first)*TileBytes,
                 staging.Get(),cursor,bytes);
             cursor+=bytes;
         }
         // Prepare ownership before mapping; no allocation of backing heaps
         // or vector storage after submission until the fence has completed.
         output.sourceBlocks.reserve(output.sourceBlocks.size()+added.size());
-        std::map<uint32_t,std::shared_ptr<ForestSourceBlock>> newNodes;
-        for(const auto& b:added)newNodes.emplace(b->first,b);
+        std::map<ForestSourceTile,std::shared_ptr<ForestSourceBlock>> newNodes;
+        for(const auto& b:added)newNodes.emplace(ForestSourceTile{b->stream,b->first},b);
         uploadCommands.Close();
         // Transfer preallocated map nodes before mapping so the pool owns
         // every heap even if submission/validation subsequently throws.
@@ -2132,7 +2174,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         work.result.buildCode=0;
         return false;
     }
-    const auto vertexAddress=output.immutableGeometry->GetGPUVirtualAddress();
+    const auto vertexAddress=output.immutableVertices->GetGPUVirtualAddress();
     const auto indexAddress=geometry->GetGPUVirtualAddress()+layouts[ForestGeneration::Indices].offset;
 
     CommandsInit(output.commands,D3D12_COMMAND_LIST_TYPE_DIRECT);
@@ -2177,7 +2219,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
                 slot.buffer.Get(),slot.offset,UINT64(end-p)*sizeof(UINT64));
             p=end;
         }
-        const auto localAddress=vertexAddress+output.immutableIndexOffset;
+        const auto localAddress=output.immutableIndices->GetGPUVirtualAddress();
         const auto build=[&]<class Api>(Api& api){
             auto limits=prepared.limits;
             // Both CLAS creation and BLAS assembly must opt in, including
@@ -2421,12 +2463,12 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         const auto& view=layouts[i];
         output.viewRequests[i]={geometry.Get(),view.offset/view.stride,view.count,view.stride};
     }
-    output.viewRequests[ForestGeneration::Vertices]={output.immutableGeometry.Get(),0,forestHierarchy->VertexCount(),sizeof(Vertex)};
+    output.viewRequests[ForestGeneration::Vertices]={output.immutableVertices.Get(),0,forestHierarchy->VertexCount(),sizeof(Vertex)};
     output.viewRequests[ForestGeneration::Addresses]={addresses.Get(),0,uint32_t(parts.size()),sizeof(UINT64)};
     // Keep descriptor ABI; MG2 remap is no longer read. Both slots refer
     // to the same sparse source index stream used by CLAS.
-    output.viewRequests[ForestGeneration::Triangles]={output.immutableGeometry.Get(),
-        output.immutableIndexOffset/sizeof(uint32_t),forestHierarchy->IndexCount(),sizeof(uint32_t)};
+    output.viewRequests[ForestGeneration::Triangles]={output.immutableIndices.Get(),
+        0,forestHierarchy->IndexCount(),sizeof(uint32_t)};
     output.viewRequests[ForestGeneration::Remap]=output.viewRequests[ForestGeneration::Triangles];
     output.viewRequests[ForestGeneration::Bounds]={geometry.Get(),bounds.offset/bounds.stride,bounds.count,bounds.stride};
     output.viewRequests[ForestGeneration::CameraBoxes]={geometry.Get(),cameraBoxes.offset/cameraBoxes.stride,cameraBoxes.count,cameraBoxes.stride};

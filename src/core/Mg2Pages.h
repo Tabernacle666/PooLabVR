@@ -106,14 +106,27 @@ class Mg2Pages {
 public:
     uint32_t VertexCount()const{return vertexCount_;}
     uint32_t IndexCount()const{return indexCount_;}
+    enum class SourceStream:uint32_t { Vertices=0, Indices=1 };
+    static constexpr uint32_t SourceStreamCount=2;
     static constexpr uint64_t SourceTileBytes=65536u;
-    uint64_t SourceIndexOffset()const{
-        return (uint64_t(vertexCount_)*sizeof(Vertex)+SourceTileBytes-1u)&~(SourceTileBytes-1u);
+    static constexpr uint64_t SourceStride(SourceStream stream){
+        return stream==SourceStream::Vertices?sizeof(Vertex):sizeof(uint32_t);
     }
-    uint64_t SourceVirtualBytes()const{
-        return (SourceIndexOffset()+uint64_t(indexCount_)*sizeof(uint32_t)+SourceTileBytes-1u)&~(SourceTileBytes-1u);
+    static constexpr uint64_t SourceAlign(uint64_t bytes){
+        return (bytes+SourceTileBytes-1u)&~(SourceTileBytes-1u);
     }
-    void PackSourceTile(uint64_t byteOffset,std::span<std::byte> destination)const;
+    uint64_t SourceBytes(SourceStream stream)const{
+        return uint64_t(stream==SourceStream::Vertices?vertexCount_:indexCount_)*SourceStride(stream);
+    }
+    // Independent, stable virtual address streams. This is the used
+    // extent, not the reservation capacity nor the physical VRAM demand.
+    uint64_t SourceVirtualBytes(SourceStream stream)const{
+        return SourceAlign(SourceBytes(stream));
+    }
+    static constexpr uint64_t SourceAddressLimit(SourceStream stream){
+        return SourceAlign(uint64_t(UINT32_MAX)*SourceStride(stream));
+    }
+    void PackSourceTile(SourceStream stream,uint64_t byteOffset,std::span<std::byte> destination)const;
     explicit Mg2Pages(const SceneData&);
     Mg2Pages(const SceneData&,std::span<const Mg2ForestPart>);
     size_t PageCount()const{return pages_.size();}

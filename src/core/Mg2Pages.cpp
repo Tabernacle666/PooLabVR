@@ -445,12 +445,12 @@ void Mg2Pages::BuildGpuCatalog(){
     }
 }
 
-void Mg2Pages::PackSourceTile(uint64_t byteOffset,std::span<std::byte> destination)const{
+void Mg2Pages::PackSourceTile(SourceStream stream,uint64_t byteOffset,std::span<std::byte> destination)const{
     if(destination.size()!=SourceTileBytes||byteOffset%SourceTileBytes||
-       byteOffset>=SourceVirtualBytes())Fail("MG2 source tile range");
+       byteOffset>=SourceVirtualBytes(stream))Fail("MG2 source tile range");
     std::fill(destination.begin(),destination.end(),std::byte{});
-    const bool indices=byteOffset>=SourceIndexOffset();
-    const uint64_t first=indices?byteOffset-SourceIndexOffset():byteOffset;
+    const bool indices=stream==SourceStream::Indices;
+    const uint64_t first=byteOffset;
     const uint64_t last=first+destination.size();
     const auto get=[&](const auto& ref)->const Cluster&{
         return pages_[ref.first].clusters[ref.second];

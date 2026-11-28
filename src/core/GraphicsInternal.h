@@ -526,15 +526,19 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     } forestAcceleration;
     // Physical backing for a stable virtual geometry address range. A block
     // stays mapped while any published/retiring geometry owns a reference.
+    using ForestSourceStream=Mg2Pages::SourceStream;
+    using ForestSourceTile=std::pair<ForestSourceStream,uint32_t>;
     struct ForestSourceBlock {
         ComPtr<ID3D12Heap> heap;
+        ForestSourceStream stream{};
         uint32_t first{},count{};
         bool ready{};
     };
     struct ForestSourcePool {
-        ComPtr<ID3D12Resource> resource;
-        std::map<uint32_t,std::shared_ptr<ForestSourceBlock>> blocks;
-        void Reset(){resource.Reset();blocks.clear();}
+        std::array<ComPtr<ID3D12Resource>,Mg2Pages::SourceStreamCount> resources;
+        std::map<ForestSourceTile,std::shared_ptr<ForestSourceBlock>> blocks;
+        auto& Resource(ForestSourceStream stream){return resources[uint32_t(stream)];}
+        void Reset(){resources={};blocks.clear();}
     } forestSourcePool;
     struct ForestGeneration {
         std::map<std::pair<uint32_t,uint32_t>,ForestClasEntry> clasCache;
@@ -568,10 +572,10 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         uint32_t routeBytes{},variants{};
         Commands commands;
         ComPtr<ID3D12Resource> buildReadback;
-        // Shared reserved source resource and fence-owned physical backing.
-        ComPtr<ID3D12Resource> immutableGeometry;
+        // Independent reserved source streams and fence-owned backing.
+        ComPtr<ID3D12Resource> immutableVertices,immutableIndices;
         std::vector<std::shared_ptr<ForestSourceBlock>> sourceBlocks;
-        UINT64 immutableIndexOffset{},geometryUploadBytes{};
+        UINT64 geometryUploadBytes{};
         UINT64 sourceResidentBytes{},sourceDemandBytes{},sourceEvictedBytes{};
         uint32_t sourceUniqueClusters{};
         UINT64 blasStart{},blasCapacity{},clasCapacity{};

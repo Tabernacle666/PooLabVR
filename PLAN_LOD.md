@@ -1,6 +1,6 @@
 # OASIS — Plan directeur LOD / géométrie territoriale
 
-**Révision du plan : 28 novembre 2026. LOD-23 en cours : refonte du catalogue MG2 ouvert autorisée ; prochain travail interne : adressage et résidence extensibles.**
+**Révision du plan : 28 novembre 2026. LOD-23 en cours : refonte du catalogue MG2 ouvert autorisée ; prochain travail interne : catalogue MG2 extensible et allocation de segments immuables.**
 
 Ce fichier est le document de dispatch du chantier. Il doit suffire à un agent sans historique de conversation. Le code et les journaux de main sont la source de vérité technique ; le plan fixe les objectifs, l'ordre et le périmètre, pas une liste d'implémentations intangibles.
 
@@ -120,8 +120,8 @@ Ordre technique indicatif, ajustable selon les dépendances. Mettre à jour les 
 | Ordre | Travail interne | Statut / référence |
 |---:|---|---|
 | 0 | Audit du catalogue fermé et de ses dépendances ; levée des invariants autorisée | AUDITÉ — décision du présent plan |
-| 1 | Adressage géométrique indépendant de la taille globale ; allocation/résidence extensible et durée de vie GPU | NON INTÉGRÉ — prochain |
-| 2 | Catalogue Mg2Pages extensible, identités/révisions stables, enregistrement et retrait local de segments, snapshots de producteurs | NON INTÉGRÉ |
+| 1 | Adressage géométrique indépendant de la taille globale ; allocation/résidence extensible et durée de vie GPU | PARTIEL — espaces sparse indépendants intégrés dans le commit contenant cette révision ; extension au-delà des réservations et admission de segments à réaliser avec l'étape 2 ; non compilé |
+| 2 | Catalogue Mg2Pages extensible, identités/révisions stables, enregistrement et retrait local de segments, snapshots de producteurs | NON INTÉGRÉ — prochain |
 | 3 | Adaptation des consommateurs communs raster, CLAS/BLAS, OMM, hit shading, PTLAS et caches à l'adressage ouvert | NON INTÉGRÉ |
 | 4 | Correction du patrimoine optique bas et forestier, cache des produits et reconstruction incrémentale | PARTIEL — f9e349e7 ; reconstruction des feuilles touchées présente mais non testée, couverture/transmittance/couleur et coût restant à traiter |
 | 5 | Routes collectives distinctes de la simulation, sélection hiérarchique GPU et suppression de la traversée/readback des descendants couverts | NON INTÉGRÉ |
@@ -129,9 +129,17 @@ Ordre technique indicatif, ajustable selon les dépendances. Mettre à jour les 
 | 7 | Élimination du fallback natif massif, y compris démarrage et nouvelles routes | PARTIEL — f9e349e7 ; conservation de la coupe lors des masques diagnostic, autres causes non traitées |
 | 8 | Inspection amont/aval finale, compilation si disponible, qualification benchmark et visuelle de LOD-23 complet | NON QUALIFIÉ |
 
+### Progression — séparation de l'adressage source (commit contenant cette révision)
+
+- `Mg2Pages` : suppression de SourceIndexOffset ; deux flux logiques Vertices/Indices, chacun avec sa propre taille utile et ses propres offsets. Le packing des tuiles 64 Kio conserve les octets source, sans modifier les indices locaux des clusters ni l'ABI shader.
+- `ForestSourcePool` : deux ressources sparse réservées indépendamment ; capacité virtuelle dérivée de l'ABI 32 bits et du support D3D12, réduction de la seule réservation virtuelle en cas de refus du pilote jusqu'à la taille nécessaire au catalogue. Aucune réduction de contenu et aucun plafond de VRAM physique ajouté. Les heaps physiques, clés de pages et références de génération distinguent maintenant flux + tuile ; les deux flux restent détenus par la génération ou son geometryOwner jusqu'à la retraite. Les mêmes pages alimentent raster, CLAS et standard DXR. Les descripteurs d'indices commencent à zéro dans leur propre ressource ; pas de changement HLSL, de matériaux, d'OMM ou de clés CLAS/BLAS.
+- Diagnostic `mg2_a06_residency` : conserve les champs existants et ajoute `index_gpu_va`, `vertex_virtual_bytes`, `index_virtual_bytes`. Les compteurs de résidence/demande/upload restent physiques et agrégés ; les deux réservations virtuelles ne sont pas de la VRAM consommée.
+- **Limite réelle** : le catalogue reste construit au démarrage. Lors de l'ouverture du catalogue, réserver des offsets append-only et sceller les dernières tuiles de chaque segment (y compris l'alignement des éléments Vertex et des indices), afin de ne jamais modifier une tuile encore référencée. Prévoir une arène/segment supplémentaire lorsque la réservation effective ou l'ABI d'adressage est épuisée ; le code actuel refuse explicitement une croissance hors capacité plutôt que relocaliser les données actives. Cette admission multi-segments et les snapshots de catalogue restent à intégrer. L'éviction des blocs froids conserve la politique existante à ce stade.
+- Validation : revue statique des correspondances entre demande, packing, mappings, CLAS, BLAS standard, descripteurs et durée de vie. Compilation Windows/DX12, validation GPU/VR et gain de performance non vérifiés. Aucun test joueur intermédiaire.
+
 ### Dépendances transversales à protéger lors de la refonte
 
-- `Mg2Pages.h/.cpp` : `SourceIndexOffset`, `SourceVirtualBytes`, `PackSourceTile`, offsets et IDs attribués au bake, tables GPU de sélection. Les identifiants de clusters ne doivent jamais entrer en collision entre segments ou révisions ; éviter de réécrire une page physique encore lue par une génération.
+- `Mg2Pages.h/.cpp` : `SourceIndexOffset` supprimé ; `SourceVirtualBytes(stream)`, `PackSourceTile(stream, ...)`, offsets et IDs attribués au bake, tables GPU de sélection. Les identifiants de clusters ne doivent jamais entrer en collision entre segments ou révisions ; éviter de réécrire une page physique encore lue par une génération.
 - `GraphicsMg2Forest.cpp` / `GraphicsInternal.h` : `ConfigureForest`, `forestHierarchy`, `ForestSourcePool`, `PackForestCut`, `UploadForestPages`, `ForestGeneration`, workers et fences. Le catalogue et les tables consommés par une génération doivent rester cohérents jusqu'à sa retraite ; aucun accès concurrent à des vecteurs mutables. Les caches CLAS utilisent actuellement (ID de cluster, offset de primitive dans le cut), les BLAS une suite ordonnée d'IDs ; préserver la sémantique de GeometryIndex ou adapter ensemble construction et lecture. Ne pas invalider tout le cache lors d'un append.
 - `common.hlsli`, `scene.hlsl`, `compute.hlsl` et `GraphicsRender.cpp` : `MeshResource`, `MeshletTriangle`, `LoadMeshRange`, `LoadInstanceStable`, `LoadCameraInstance`, `RayTexturedOpacity`, `LoadRayTriangle`, tables de descripteurs et indices de hit. Le chemin natif, les matériaux, la géométrie coupée et les objets déformables doivent continuer à fonctionner.
 - `GraphicsFoliageOmm.cpp` : `FindFoliageOmm(mesh)` lie actuellement l'OMM au mesh source ; vérifier la compatibilité UV/matériau des nouvelles représentations, ne pas traiter le feuillage masqué comme opaque faute de micromap.
