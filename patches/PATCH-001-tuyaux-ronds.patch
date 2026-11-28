@@ -1,0 +1,114 @@
+diff --git a/src/app/BuildingSession.cpp b/src/app/BuildingSession.cpp
+index 65ed9bb..6f432bd 100644
+--- a/src/app/BuildingSession.cpp
++++ b/src/app/BuildingSession.cpp
+@@ -21,6 +21,48 @@ namespace {
+ using namespace Buildings;
+ constexpr float EyeHeight=1.52f,Radius=.25f;
+ constexpr float Pi=3.14159265358979323846f;
++uint32_t AppendWaterPipe(SceneData& scene,float diameter,float length){
++    auto& mesh=scene.meshes;
++    MeshRange range{};
++    range.firstVertex=uint32_t(mesh.vertices.size());
++    range.firstIndex=uint32_t(mesh.indices.size());
++    range.firstMeshlet=uint32_t(mesh.meshlets.size());
++    constexpr uint32_t sides=32u;
++    const float radius=diameter*.5f,half=length*.5f;
++    for(uint32_t i=0;i<=sides;++i){
++        const float u=float(i)/float(sides);
++        const float angle=(i==sides?0.f:u)*2.f*Pi;
++        const XMFLOAT3 normal{std::cos(angle),0.f,std::sin(angle)};
++        const float x=radius*normal.x,z=radius*normal.z;
++        const float around=u*Pi*diameter;
++        mesh.vertices.push_back({{x,-half,z},normal,{around,0.f}});
++        mesh.vertices.push_back({{x,half,z},normal,{around,length}});
++        if(i>0){
++            const uint32_t v=range.firstVertex+(i-1u)*2u;
++            mesh.indices.insert(mesh.indices.end(),{v,v+1u,v+2u,v+1u,v+3u,v+2u});
++        }
++    }
++    for(float sign:{-1.f,1.f}){
++        const uint32_t center=uint32_t(mesh.vertices.size());
++        const XMFLOAT3 normal{0.f,sign,0.f};
++        mesh.vertices.push_back({{0.f,sign*half,0.f},normal,{0.f,0.f}});
++        for(uint32_t i=0;i<sides;++i){
++            const auto& p=mesh.vertices[range.firstVertex+2u*i].position;
++            mesh.vertices.push_back({{p.x,sign*half,p.z},normal,{p.x,p.z}});
++        }
++        for(uint32_t i=0;i<sides;++i){
++            const uint32_t a=center+1u+i,b=center+1u+(i+1u)%sides;
++            if(sign<0.f)mesh.indices.insert(mesh.indices.end(),{center,a,b});
++            else mesh.indices.insert(mesh.indices.end(),{center,b,a});
++        }
++    }
++    FinishRange(mesh,range);
++    const auto index=uint32_t(mesh.ranges.size());
++    mesh.ranges.push_back(range);
++    mesh.deformations.emplace_back();mesh.motions.emplace_back();
++    mesh.skin.resize(mesh.vertices.size());
++    return index;
++}
+ uint64_t HallDecorKey(uint64_t definitionId,int level){
+     return 0x8000000000000000ull|
+         ((definitionId&0x7fffffffull)<<32)|
+@@ -203,6 +245,15 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
+     // Imported campus furniture and organic trees must not inherit this flag.
+     o.flags=BuildingObject|StructuralBoxObject;
+     o.mesh=mesh_;o.material=materials_[size_t(part.material)];o.boundRadius=.87f;
++    if(part.material==Material::WaterPipe||part.material==Material::DrainPipe){
++        if(const auto pipe=waterPipeVisuals_.find(part.id);pipe!=waterPipeVisuals_.end()){
++            o.flags=BuildingObject;
++            o.mesh=pipe->second.mesh;
++            o.boundRadius=pipe->second.radius;
++            o.scale={1.f,1.f,1.f};
++            o.current.q=o.previous.q=pipe->second.rotation;
++        }
++    }
+     if(worktop_){
+         // Render-only suppression: retain the original structural host ID
+         // for collisions, destruction and mounted workstation props.
+@@ -356,6 +407,31 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
+         materials_[i]=uint32_t(scene.materials.size());
+         scene.materials.push_back(m);scene.materialNames.emplace_back(spec.name);
+     }
++    waterPipeVisuals_.clear();
++    // Reuse each metric diameter/length pair across floors and service runs.
++    std::map<std::pair<long,long>,uint32_t> pipeMeshes;
++    constexpr float turn=.7071067812f;
++    constexpr XMFLOAT4 orientations[]{{0.f,0.f,-turn,turn},{0.f,0.f,0.f,1.f},{turn,0.f,0.f,turn}};
++    for(const auto& sector:sectors_)for(const auto& service:sector->services){
++        const bool drain=service.kind==ServiceKind::Drain;
++        if(!drain&&service.kind!=ServiceKind::ColdWater&&service.kind!=ServiceKind::HotWater)continue;
++        const auto [lo,hi]=service.bounds;
++        const std::array spans{(hi.x-lo.x)*definition_.xScale,hi.y-lo.y,hi.z-lo.z};
++        const auto axial=std::max_element(spans.begin(),spans.end());
++        const auto axis=size_t(axial-spans.begin());
++        const float diameter=(drain?.094f:.046f)*definition_.xScale;
++        const auto key=std::pair{std::lround(diameter*1000.f),std::lround(*axial*1000.f)};
++        auto [entry,inserted]=pipeMeshes.try_emplace(key);
++        const float meshDiameter=OasisMetersToScene(float(key.first)*.001f);
++        const float meshLength=OasisMetersToScene(float(key.second)*.001f);
++        if(inserted){
++            entry->second=AppendWaterPipe(scene,meshDiameter,meshLength);
++            const auto material=drain?Material::DrainPipe:Material::WaterPipe;
++            scene.mg2ForestParts.push_back({entry->second,materials_[size_t(material)]});
++        }
++        waterPipeVisuals_.emplace(service.host,WaterPipeVisual{entry->second,orientations[axis],
++            .5f*std::hypot(meshDiameter,meshLength)});
++    }
+     // Publish structural opaque solids too; pane meshes remain translucent.
+     scene.mg2ForestParts.push_back({mesh_,materials_[size_t(Material::Concrete)]});
+     constexpr std::array<XMFLOAT4,4> light{{
+diff --git a/src/app/BuildingSession.h b/src/app/BuildingSession.h
+index 86c9035..789d6f5 100644
+--- a/src/app/BuildingSession.h
++++ b/src/app/BuildingSession.h
+@@ -112,6 +112,8 @@ class BuildingSession {
+     float fallSpeed_{};
+     bool grounded_{};
+     uint32_t mesh_{},paneMesh_{};
++    struct WaterPipeVisual {uint32_t mesh{};XMFLOAT4 rotation{};float radius{};};
++    std::unordered_map<uint64_t,WaterPipeVisual> waterPipeVisuals_;
+     std::array<uint32_t,size_t(Buildings::Material::Count)> materials_{};
+     std::array<uint32_t,4> paneMaterials_{};
+     std::vector<Buildings::Part> movingParts_;
