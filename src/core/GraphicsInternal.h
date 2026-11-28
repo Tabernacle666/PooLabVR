@@ -672,6 +672,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::vector<GpuInstance> instances;
         std::vector<uint64_t> descendants;
         XMFLOAT4 support{};
+        XMFLOAT3 supportHalf{};
         float error{};
         bool rayEligible{true};
     };
@@ -743,8 +744,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         bool requested{},succeeded{},validationFailed{};
     } forestBuild;
     struct TerritorialGpuSelection {
-        struct Node {XMFLOAT4 sphere;float geometric{},optical{};uint32_t escape{},selectable{};};
-        static_assert(sizeof(Node)==32);
+        struct Node {XMFLOAT4 sphere;float geometric{},optical{};uint32_t escape{},selectable{};XMFLOAT4 supportBox{};};
+        static_assert(sizeof(Node)==48);
         uint64_t revision{};
         std::vector<TerritorialCatalogKey> keys;
         uint32_t rootCount{};

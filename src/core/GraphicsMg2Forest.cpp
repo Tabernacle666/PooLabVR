@@ -1278,12 +1278,8 @@ void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneC
                 const float v=std::tan(fov.angleUp)-std::tan(fov.angleDown);
                 const float focal=std::max(h>.01f?float(width)/h:float(width)*.5f,
                     v>.01f?float(height)/v:float(height)*.5f);
-                const auto delta=Sub({node.sphere.x,node.sphere.y,node.sphere.z},xr.eyes[eye]);
-                const auto motion=architectureEyeMotion[eye];
-                const float travel2=Dot(motion,motion);
-                const float t=travel2>0.f?std::clamp(Dot(delta,motion)/travel2,0.f,1.f):0.f;
-                const float d=Length(Sub(delta,Scale(motion,t)));
-                const float distance=d-node.sphere.w-1.e-5f*(d+node.sphere.w+1.f+Length(motion));
+                const float distance=ArchitectureSweptDistance(node.sphere,node.supportHalf,
+                    xr.eyes[eye],architectureEyeMotion[eye]);
                 if(distance<=xr.input.SceneNearZ()||error*focal>TerritorialRasterPixels*distance)return false;
             }
             return true;
@@ -1572,6 +1568,7 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
                     // No unit-box flag on a compound. Both optical cuts are
                     // independent of the original resident physical records.
                     group.support=live->architecture->sphere;
+                    group.supportHalf=live->architecture->supportHalf;
                     group.error=live->architecture->error;
                     for(const auto& rep:active->second.representations)group.error=std::max(group.error,rep.geometricError);
                     if(!std::isfinite(group.error)||!std::isfinite(group.support.w))continue;
@@ -1623,15 +1620,14 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
                 const float horizontal=std::tan(fov.angleRight)-std::tan(fov.angleLeft);
                 const float focal=std::max(horizontal>.01f?float(width)/horizontal:float(width)*.5f,
                                            vertical>.01f?float(height)/vertical:float(height)*.5f);
-                const auto delta=Sub({group.support.x,group.support.y,group.support.z},xr.eyes[eye]);
-                // Architectural cut admission mirrors the worker's swept
-                // stereo metric. Keep the existing vegetation policy intact.
-                const auto motion=group.key.first==TerritorialDomain::Architecture?
-                    architectureEyeMotion[eye]:XMFLOAT3{};
-                const float travel2=Dot(motion,motion);
-                const float t=travel2>0.f?std::clamp(Dot(delta,motion)/travel2,0.f,1.f):0.f;
-                const float d=Length(Sub(delta,Scale(motion,t)));
-                const float distance=d-group.support.w-1.e-5f*(d+group.support.w+1.f+Length(motion));
+                float distance{};
+                if(group.key.first==TerritorialDomain::Architecture)
+                    distance=ArchitectureSweptDistance(group.support,group.supportHalf,
+                        xr.eyes[eye],architectureEyeMotion[eye]);
+                else{
+                    const float d=Length(Sub(xr.eyes[eye],{group.support.x,group.support.y,group.support.z}));
+                    distance=d-group.support.w-1.e-5f*(d+group.support.w+1.f);
+                }
                 accept=distance>xr.input.SceneNearZ()&&group.error*focal<=errorPixels*distance;
             }
             if(accept){chosen.push_back(index);accepted.insert(group.key);}
@@ -2779,6 +2775,8 @@ void Graphics::Impl::PrepareTerritorialSelection(ForestSelectionWork& work){
                 const auto& node=*it->second.node;
                 if(node.architecture&&!it->second.representations.empty()){
                     record.sphere=node.architecture->sphere;
+                    const auto half=node.architecture->supportHalf;
+                    record.supportBox={half.x,half.y,half.z,1.f};
                     record.geometric=node.architecture->error;
                     for(const auto& rep:it->second.representations)record.geometric=std::max(record.geometric,rep.geometricError);
                     record.optical=0.f;

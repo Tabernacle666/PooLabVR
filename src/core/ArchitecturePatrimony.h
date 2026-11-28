@@ -31,12 +31,27 @@ struct ArchitectureRecipeNode {
     uint64_t revision{},routes{},sourceTriangles{};
     XMFLOAT3 lo{INFINITY,INFINITY,INFINITY},hi{-INFINITY,-INFINITY,-INFINITY};
     XMFLOAT4 sphere{};
+    XMFLOAT3 supportHalf{}; // conservative AABB around sphere.xyz
     float error{};
     bool rayEligible{true};
     std::vector<uint32_t> materials;
     std::vector<ArchitecturePlacement> placements;
     std::vector<std::shared_ptr<const ArchitectureRecipeNode>> children;
 };
+// Conservative distance lower bound between the eye's swept segment and
+// the real axis-aligned support. The segment AABB contains the segment,
+// so its distance to the support can never exceed the true minimum.
+inline float ArchitectureSweptDistance(XMFLOAT4 sphere,XMFLOAT3 half,
+        XMFLOAT3 eye,XMFLOAT3 motion){
+    const auto a=Sub(eye,{sphere.x,sphere.y,sphere.z});
+    const auto b=Add(a,motion);
+    const XMFLOAT3 gap{
+        std::max({0.f,std::min(a.x,b.x)-half.x,-half.x-std::max(a.x,b.x)}),
+        std::max({0.f,std::min(a.y,b.y)-half.y,-half.y-std::max(a.y,b.y)}),
+        std::max({0.f,std::min(a.z,b.z)-half.z,-half.z-std::max(a.z,b.z)})};
+    const float d=Length(gap);
+    return d-1.e-5f*(Length(a)+Length(motion)+Length(half)+1.f);
+}
 class ArchitecturePatrimony {
 public:
     using Key=TerritorialPatrimony::Key;
@@ -182,8 +197,24 @@ public:
                     const float radius=b.w*stretch+e;
                     if(!std::isfinite(radius)||radius<0.f||
                        !std::isfinite(center.x)||!std::isfinite(center.y)||!std::isfinite(center.z))continue;
-                    const XMFLOAT3 extent{radius,radius,radius};
-                    include(*next,Sub(center,extent),Add(center,extent));
+                    if(p.flags&StructuralBoxObject){
+                        // The unit-box flag is a producer shape contract.
+                        // Exact eight corners, not a sphere scaled by the
+                        // longest dimension of a wall/floor.
+                        const auto transform=Matrix(p.pose);
+                        XMFLOAT3 lo{INFINITY,INFINITY,INFINITY},hi{-INFINITY,-INFINITY,-INFINITY};
+                        for(unsigned k=0;k<8u;++k){
+                            const auto v=TransformPoint({(k&1u?.5f:-.5f)*p.scale.x,
+                                (k&2u?.5f:-.5f)*p.scale.y,(k&4u?.5f:-.5f)*p.scale.z},transform);
+                            lo={std::min(lo.x,v.x),std::min(lo.y,v.y),std::min(lo.z,v.z)};
+                            hi={std::max(hi.x,v.x),std::max(hi.y,v.y),std::max(hi.z,v.z)};
+                        }
+                        const float pad=1.e-5f*(Length(center)+Length(p.scale)+1.f);
+                        include(*next,Sub(lo,{pad,pad,pad}),Add(hi,{pad,pad,pad}));
+                    }else{
+                        const XMFLOAT3 extent{radius,radius,radius};
+                        include(*next,Sub(center,extent),Add(center,extent));
+                    }
                     next->error=std::max(next->error,e);
                     next->sourceTriangles+=ranges[p.mesh].indexCount/3u;
                     ++next->routes;
@@ -216,6 +247,8 @@ public:
             const double z=std::max(double(center.z)-next->lo.z,double(next->hi.z)-center.z);
             next->sphere={center.x,center.y,center.z,
                 std::nextafter(float(std::sqrt(x*x+y*y+z*z)),INFINITY)};
+            next->supportHalf={std::nextafter(float(x),INFINITY),std::nextafter(float(y),INFINITY),
+                std::nextafter(float(z),INFINITY)};
             if(!std::isfinite(next->sphere.w)){node.recipe.reset();continue;}
             node.recipe=std::move(next);
         }

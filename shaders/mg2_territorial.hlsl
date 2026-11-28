@@ -3,6 +3,7 @@ struct TerritorialNode {
     float4 sphere;
     float geometric,optical;
     uint escape,selectable;
+    float4 supportBox; // xyz: AABB half extent, w: architectural support
 };
 StructuredBuffer<TerritorialNode> Nodes : register(t0);
 StructuredBuffer<uint> Roots : register(t1);
@@ -25,11 +26,19 @@ void Mg2TerritorialMain(uint3 group:SV_GroupID,uint lane:SV_GroupIndex){
         [loop]for(uint eye=0u;eye<eyeCount&&accept;++eye){
             const float4 view=Eyes[eye*2u],motion=Eyes[eye*2u+1u];
             const float3 delta=node.sphere.xyz-view.xyz;
-            const float travel2=dot(motion.xyz,motion.xyz);
-            const float t=travel2>0.0?saturate(dot(delta,motion.xyz)/travel2):0.0;
-            const float swept=length(delta-motion.xyz*t);
-            const float margin=1.e-5*(swept+node.sphere.w+1.0+length(motion.xyz));
-            const float distance=swept-node.sphere.w-margin;
+            float distance;
+            if(node.supportBox.w!=0.f){
+                const float3 a=-delta,b=a+motion.xyz;
+                const float3 gap=max(0.f,max(min(a,b)-node.supportBox.xyz,
+                    -node.supportBox.xyz-max(a,b)));
+                distance=length(gap)-1.e-5*(length(a)+length(motion.xyz)+length(node.supportBox.xyz)+1.f);
+            }else{
+                const float travel2=dot(motion.xyz,motion.xyz);
+                const float t=travel2>0.0?saturate(dot(delta,motion.xyz)/travel2):0.0;
+                const float swept=length(delta-motion.xyz*t);
+                const float margin=1.e-5*(swept+node.sphere.w+1.0+length(motion.xyz));
+                distance=swept-node.sphere.w-margin;
+            }
             // Both eyes, including off-screen ray contributors.
             accept=distance>motion.w&&max(node.geometric,node.optical)*view.w<=errorPixels*distance;
         }

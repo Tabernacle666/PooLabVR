@@ -448,10 +448,30 @@ namespace OASIS {
             // tiles or world/physics instance storage.
             f.instanceRangeData[route++]={first,collectiveCount,Physical(f.territorialInstanceSRV),0u};
             if(coreSceneWork&&campusVisible){
-                includeCameraRange(first,collectiveCount);
                 includeShadowRange(first,collectiveCount);
                 for(uint32_t n=0;n<collectiveCount;++n){
                     const auto& instance=f.territorialCut->instances[n];
+                    // Camera-only rejection of a conservative enclosing
+                    // sphere. Never drop an off-screen shadow/RTX source.
+                    // Existing vegetation admission remains unchanged.
+                    bool inView=true;
+                    if((instance.flags&BuildingObject)&&(visibilityDiagnosticMask&1u)==0u){
+                        const auto& b=instance.positionRadius;
+                        const XMVECTOR center=XMVectorSet(b.x,b.y,b.z,1.f);
+                        const float radius=b.w+1.e-5f*(std::abs(b.x)+std::abs(b.y)+std::abs(b.z)+b.w+1.f);
+                        inView=false;
+                        for(uint32_t eye=0;eye<xr.viewCount&&!inView;++eye){
+                            bool outside=false;
+                            for(const auto& plane:frusta[eye]){
+                                const float distance=XMVectorGetX(XMVector4Dot(center,plane));
+                                const float norm=XMVectorGetX(XMVector3Length(plane));
+                                if(distance<-radius*norm){outside=true;break;}
+                            }
+                            inView=!outside;
+                        }
+                    }
+                    if(!inView){++result.residentCpuRejected;continue;}
+                    includeCameraRange(first+n,1u);
                     if(!OASIS_PRISM_VISIBLE(prismSceneMask,residentCategory(instance.flags)))continue;
                     const auto& surface=surfaceData[instance.material];
                     const auto start=residentFirst;

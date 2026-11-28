@@ -125,7 +125,7 @@ SolarReceiver SolarReadReceiver(Texture2DArray<float> depth,uint2 pixel,uint vie
     return r;
 }
 bool SolarCompatible(SolarReceiver a,SolarReceiver b){
-    if(!a.valid||!b.valid||a.receiver!=b.receiver||dot(a.n,b.n)<.999f)return false;
+    if(!a.valid||!b.valid||a.receiver==0xffffffffu||a.receiver!=b.receiver||dot(a.n,b.n)<.999f)return false;
     const float footprint=max(a.footprint,b.footprint);
     const float3 delta=a.p-b.p;
     const float limit=3.f*footprint+0.116504854f;
@@ -189,6 +189,7 @@ bool SolarSpatialWitness(RWTexture2DArray<float4> output,SolarReceiver r,uint2 p
 }
 bool SolarSpatialLookup(RWTexture2DArray<float4> output,SolarReceiver r,out float value){
     value=-1.f;
+    if(r.receiver==0xffffffffu)return false;
     RWByteAddressBuffer table=ResourceDescriptorHeap[DomainResource(ResourceDomainLighting,LightingSolarSpatialUAV)];
     const uint index=table.Load(SolarSpatialHash(r.p,r.footprint,r.receiver)*4u);
     if(index!=0xffffffffu&&index<Width*Height&&
