@@ -251,6 +251,9 @@ public:
     bool StageForestGrowth(std::span<const WorldObject>,std::span<const uint64_t>,
                            std::span<const WorldObject>,std::span<const uint64_t>);
     void CommitForestGrowth();
+    bool ForestRouteReady(const WorldObject&,uint64_t identity)const;
+    bool StageForestMutation(const WorldObject&,uint64_t identity);
+    void ReleaseForestMutation(uint64_t identity);
     bool Prepare(const FrameInput&);
     void Render(XRFrame&,const GpuProducerCoordinator& coordinator={});
     void WaitIdle();

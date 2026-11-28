@@ -766,6 +766,11 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     std::shared_ptr<ForestGeneration> forestPending,forestResident;
     // Session owner only; workers see the captured registry.
     std::vector<Mg2GpuRegistryEntry> forestStagedEntries;
+    // Pending individual mutations share the producer, not growth ownership.
+    std::map<uint64_t,Mg2GpuRegistryEntry> forestMutationEntries;
+    bool ForestRouteReady(const WorldObject&,uint64_t)const;
+    bool StageForestMutation(const WorldObject&,uint64_t);
+    void ReleaseForestMutation(uint64_t);
     uint64_t forestStageRevision{},forestStageCheckedSerial{},forestInitialCheckedSerial{};
     bool forestStageOpen{},forestStageReady{},forestInitialReady{};
     bool StageForestGrowth(std::span<const WorldObject>,std::span<const uint64_t>,

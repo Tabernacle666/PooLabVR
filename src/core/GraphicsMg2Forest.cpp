@@ -823,7 +823,8 @@ void Graphics::Impl::ResetForest(){
     forestSelection.tileInputs.clear();
     forestSelection.staticInputs.clear();
     forestSelection.stagedInputs.clear();forestSelection.stagedRevision=0;
-    forestStagedEntries.clear();forestStageRevision=forestStageCheckedSerial=forestInitialCheckedSerial=0;
+    forestStagedEntries.clear();forestMutationEntries.clear();
+    forestStageRevision=forestStageCheckedSerial=forestInitialCheckedSerial=0;
     forestStageOpen=forestStageReady=forestInitialReady=false;
     forestAdmissionSource=nullptr;forestAdmissionMissingTiles.clear();
     forestAdmissionStaticGeneration=0;
@@ -1592,6 +1593,43 @@ void Graphics::Impl::CommitForestGrowth(){
     ++forestStageRevision;
 }
 
+bool Graphics::ForestRouteReady(const WorldObject& o,uint64_t id)const{return impl_->ForestRouteReady(o,id);}
+bool Graphics::StageForestMutation(const WorldObject& o,uint64_t id){return impl_->StageForestMutation(o,id);}
+void Graphics::ReleaseForestMutation(uint64_t id){impl_->ReleaseForestMutation(id);}
+
+bool Graphics::Impl::ForestRouteReady(const WorldObject& o,uint64_t id)const{
+    if(!o.enabled||!ForestRouteRequired(o.mesh,o.flags,o.scale.x,o.scale.y,o.scale.z))return true;
+    const Mg2InstanceRoute key{uint32_t(id),uint32_t(id>>32u),o.mesh|Mg2ResidentKeyBit,0u};
+    return id&&forestResident&&forestResident->FindRoute(key)!=Invalid;
+}
+bool Graphics::Impl::StageForestMutation(const WorldObject& o,uint64_t id){
+    if(ForestRouteReady(o,id))return true;
+    if(!id)Fail("MG2 mutation identity missing");
+    if(!forestHierarchy)return false;
+    const Mg2InstanceRoute key{uint32_t(id),uint32_t(id>>32u),o.mesh|Mg2ResidentKeyBit,0u};
+    const auto old=forestMutationEntries.find(id);
+    // A repeated request must not restart a pending geometry build. A new
+    // target mesh replaces the staged route; the current live route stays.
+    if(old!=forestMutationEntries.end()&&old->second.key==key)return false;
+    Mg2GpuRegistryEntry entry{};
+    if(!forestHierarchy->RegistryMesh(o.mesh,entry))Fail("MG2 mutation source unavailable");
+    const auto& bound=meshes.ranges[o.mesh].bounds;
+    const float hi=std::max({std::abs(o.scale.x),std::abs(o.scale.y),std::abs(o.scale.z)});
+    entry.key=key;
+    entry.rootRadius={o.current.p.x,o.current.p.y,o.current.p.z,
+        (Length({bound.x,bound.y,bound.z})+bound.w)*hi};
+    entry.rotation={o.current.q.x,o.current.q.y,o.current.q.z,o.current.q.w};
+    entry.scale={o.scale.x,o.scale.y,o.scale.z,0.f};
+    forestMutationEntries.insert_or_assign(id,entry);++forestStageRevision;
+    DiagnosticLine("lod23_mutation_stage pending=1\r\n");
+    return false;
+}
+void Graphics::Impl::ReleaseForestMutation(uint64_t id){
+    if(forestMutationEntries.empty()||!forestMutationEntries.erase(id))return;
+    ++forestStageRevision;
+    DiagnosticLine("lod23_mutation_release\r\n");
+}
+
 bool Graphics::Impl::ForestRouteRequired(uint32_t mesh,uint32_t flags,float sx,float sy,float sz)const{
     return !(flags&(DeformedObject|AlphaBlendObject))&&
         mesh<meshes.ranges.size()&&std::min({std::abs(sx),std::abs(sy),std::abs(sz)})>=1.e-6f&&
@@ -1848,7 +1886,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         it=forestGenerations.erase(it);
     }
     forestStatus.traceForestRetireMs=float(1000.*QpcSeconds(QpcCounter()-retireStart));
-    const bool canPublish=nativeCampus||forestStageOpen;
+    const bool canPublish=nativeCampus||forestStageOpen||!forestMutationEntries.empty();
     if(canPublish)f.forestRaster=forestResident;
 
     // The diagnostic freezes only the geometry selection, not drawing.
@@ -2254,9 +2292,15 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         tiles->CommitForestTiles();
     }
     if(stageChanged){
-        for(const auto& entry:forestStagedEntries){
+        const auto stage=[&](const Mg2GpuRegistryEntry& entry){
+            // A staged replacement can have the same identity as a live
+            // route but never owns that route's registry slot. On commit,
+            // staging is removed before the dirty physical tile is captured.
+            if(selection.registrySlots.contains(entry.key)||selection.parkedRegistry.contains(entry.key))return;
             insertRegistry(entry);selection.stagedInputs.push_back(entry.key);
-        }
+        };
+        for(const auto& entry:forestStagedEntries)stage(entry);
+        for(const auto& [id,entry]:forestMutationEntries)stage(entry);
         selection.stagedRevision=forestStageRevision;
     }
     selection.tileSource=tiles;

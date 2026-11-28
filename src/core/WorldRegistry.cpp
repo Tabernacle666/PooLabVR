@@ -1,4 +1,5 @@
 #include "WorldRegistry.h"
+#include "Graphics.h"
 #include "OasisMetric.h"
 #include <algorithm>
 #include <cmath>
@@ -68,6 +69,23 @@ void WorldRegistry::RefreshPatrimony(){
     vegetationPatrimony_.RefreshInvalid(cache_);
     forestPatrimony_.RefreshInvalid(cache_);
 }
+bool WorldRegistry::MutationIdentityAllowed(uint64_t id)const noexcept{
+    return id&&((id&(1ull<<63))||reservedMutationIdentities_.contains(id));
+}
+std::vector<uint64_t> WorldRegistry::ReserveMutationIdentities(size_t count){
+    if(count>(1ull<<63)-nextIdentity_)Fail("World mutation identity range exhausted");
+    std::vector<uint64_t> ids;ids.reserve(count);
+    for(size_t i=0;i<count;++i){const auto id=nextIdentity_++;reservedMutationIdentities_.insert(id);ids.push_back(id);}
+    return ids;
+}
+void WorldRegistry::FinishForestMutation(uint64_t id){
+    if(forestAdmission_)forestAdmission_->ReleaseForestMutation(id);
+    reservedMutationIdentities_.erase(id);
+}
+void WorldRegistry::CancelMutation(std::span<const uint64_t> ids){
+    for(const auto id:ids)FinishForestMutation(id);
+}
+
 uint64_t WorldRegistry::Create(const WorldObject& object) {
     auto ids=CreateBatch(std::span<const WorldObject>(&object,1));
     return ids.front();
@@ -91,6 +109,20 @@ void WorldRegistry::CreateCanopyBatch(std::span<const WorldObject> objects,
         canopyPlants_.emplace(root,CanopyPlant{root,{root,ids[2*i+1]},assemblies[i]});
     }
 }
+bool WorldRegistry::TryCreateCanopyBatch(std::span<const WorldObject> objects,
+        std::span<const uint32_t> assemblies,std::span<const uint64_t> ids){
+    if(objects.size()%2u||objects.size()/2u!=assemblies.size()||ids.size()!=objects.size())
+        Fail("Canopy assembly mutation identity count");
+    for(size_t i=0;i<ids.size();i+=2)
+        if(ids[i+1]!=ids[i]+1u)Fail("Canopy route identities must be consecutive");
+    auto committed=TryApplyBatch({}, {}, objects,ids);
+    if(!committed)return false;
+    for(size_t i=0;i<assemblies.size();++i){
+        const auto root=(*committed)[2*i];
+        canopyPlants_.emplace(root,CanopyPlant{root,{root,(*committed)[2*i+1]},assemblies[i]});
+    }
+    return true;
+}
 const CanopyPlant* WorldRegistry::FindCanopyPlant(uint64_t identity)const noexcept{
     const auto it=canopyPlants_.find(identity);
     return it==canopyPlants_.end()?nullptr:&it->second;
@@ -112,7 +144,7 @@ bool WorldRegistry::UpdateCanopyPlant(uint64_t identity,uint32_t assembly,
        (transform&&plant.transformRevision==UINT64_MAX)||
        (state&&plant.stateRevision==UINT64_MAX))Fail("Canopy plant revision exhausted");
     const std::array<Change,2> changes{{{plant.routes[0],objects[0]},{plant.routes[1],objects[1]}}};
-    ApplyBatch(changes,{},{});
+    if(!TryApplyBatch(changes,{},{}))return false;
     plant.assembly=assembly;
     if(morphology)++plant.morphologyRevision;
     if(transform)++plant.transformRevision;
@@ -124,6 +156,37 @@ bool WorldRegistry::EraseCanopyPlant(uint64_t identity){
     if(it==canopyPlants_.end())return false;
     const auto routes=it->second.routes;
     return EraseBatch(routes)!=0;
+}
+std::optional<std::vector<uint64_t>> WorldRegistry::TryApplyBatch(std::span<const Change> changes,
+        std::span<const uint64_t> removed,std::span<const WorldObject> objects,
+        std::span<const uint64_t> ids){
+    if(!ids.empty()&&ids.size()!=objects.size())Fail("Territorial identity count mismatch");
+    if(!forestAdmission_)return ApplyBatch(changes,removed,objects,ids);
+    // Validate the transaction before registering any future route.
+    std::unordered_set<uint64_t> touched;
+    for(const auto id:removed)touched.insert(id);
+    for(const auto& change:changes){
+        if(!owners_.contains(change.identity)||!touched.insert(change.identity).second)
+            Fail("Invalid world mutation identity");
+        (void)Record(change.object,change.identity,RenderId(change.identity));
+    }
+    for(size_t i=0;i<objects.size();++i){
+        const auto id=ids.empty()?nextIdentity_+i:ids[i];
+        if(!ids.empty()&&(!MutationIdentityAllowed(id)||owners_.contains(id)||!touched.insert(id).second))
+            Fail("Invalid world mutation insertion identity");
+        (void)Record(objects[i],id,0u);
+        if(ids.empty()&&!forestAdmission_->ForestRouteReady(objects[i],id))
+            Fail("Deferred MG2 insertion requires reserved or stable identities");
+    }
+    bool ready=true;
+    for(const auto& change:changes)
+        if(!forestAdmission_->StageForestMutation(change.object,change.identity))ready=false;
+    for(size_t i=0;i<objects.size();++i){
+        const auto id=ids.empty()?nextIdentity_+i:ids[i];
+        if(!forestAdmission_->StageForestMutation(objects[i],id))ready=false;
+    }
+    if(!ready)return std::nullopt;
+    return ApplyBatch(changes,removed,objects,ids);
 }
 std::vector<uint64_t> WorldRegistry::ApplyBatch(std::span<const Change> changes,
         std::span<const uint64_t> removed,std::span<const WorldObject> objects,
@@ -154,6 +217,8 @@ std::vector<uint64_t> WorldRegistry::ApplyBatch(std::span<const Change> changes,
             Fail("World batch tries to update a removed object");
         const auto renderId=RenderId(change.identity);
         const auto record=Record(change.object,change.identity,renderId);
+        if(forestAdmission_&&!forestAdmission_->ForestRouteReady(change.object,change.identity))
+            Fail("MG2 mutation must be prepared with TryApplyBatch");
         const auto target=TileOf(change.object);
         if(target==owner->second){
             source.patched.insert_or_assign(change.identity,record);
@@ -174,10 +239,13 @@ std::vector<uint64_t> WorldRegistry::ApplyBatch(std::span<const Change> changes,
     for(size_t i=0;i<objects.size();++i){
         const auto& object=objects[i];
         const auto id=stableIdentities.empty()?identity++:stableIdentities[i];
-        if(!stableIdentities.empty()&&(!(id&(1ull<<63))||owners_.contains(id)||
+        if(!stableIdentities.empty()&&(!MutationIdentityAllowed(id)||owners_.contains(id)||
            !batchIdentities.insert(id).second))Fail("Duplicate or invalid territorial identity");
         const auto key=TileOf(object);
-        edits[key].added.push_back(Record(object,id,renderId));
+        const auto record=Record(object,id,renderId);
+        if(forestAdmission_&&!forestAdmission_->ForestRouteReady(object,id))
+            Fail("MG2 insertion must be prepared with TryApplyBatch");
+        edits[key].added.push_back(record);
         identities.push_back(id);
         moved.emplace_back(id,key);
         ++renderId;
@@ -211,6 +279,9 @@ std::vector<uint64_t> WorldRegistry::ApplyBatch(std::span<const Change> changes,
     nextIdentity_=identity;
     nextRenderId_=renderId;
     RefreshPatrimony();
+    for(const auto id:removed)FinishForestMutation(id);
+    for(const auto& change:changes)FinishForestMutation(change.identity);
+    for(const auto id:identities)FinishForestMutation(id);
     return identities;
 }
 uint32_t WorldRegistry::RenderId(uint64_t identity)const{
@@ -225,6 +296,7 @@ bool WorldRegistry::Update(uint64_t id,const WorldObject& object) {
     const auto& oldTile=cache_.ResidentTiles().at(oldKey);
     const auto& old=oldTile.objects.at(oldTile.byIdentity.at(id));
     const auto updated=Record(object,id,old.renderId);
+    if(forestAdmission_&&!forestAdmission_->StageForestMutation(object,id))return false;
     const auto refresh=[&]{
         vegetationPatrimony_.InvalidateAt(id,object.mesh,object.material,object.current.p);
         forestPatrimony_.InvalidateAt(id,object.mesh,object.material,object.current.p);
@@ -233,6 +305,7 @@ bool WorldRegistry::Update(uint64_t id,const WorldObject& object) {
     if(oldKey==newKey){
         const bool changed=cache_.PatchTileObject(oldKey,id,updated);
         if(changed)refresh();
+        FinishForestMutation(id);
         return changed;
     }
     auto source=CopyTile(oldKey);
@@ -245,6 +318,7 @@ bool WorldRegistry::Update(uint64_t id,const WorldObject& object) {
     cache_.UpsertTile(std::move(target));
     owner->second=newKey;
     refresh();
+    FinishForestMutation(id);
     return true;
 }
 bool WorldRegistry::Erase(uint64_t id) {
@@ -270,7 +344,10 @@ uint64_t WorldRegistry::EraseBatchImpl(std::span<const uint64_t> ids,bool forget
         else cache_.UpsertTile(std::move(tile));
         for(uint64_t id:idsInTile){owners_.erase(id);if(forgetCanopy){vegetationPatrimony_.Invalidate(id);forestPatrimony_.Invalidate(id);ForgetCanopyRoute(id);}}
     }
-    if(forgetCanopy)RefreshPatrimony();
+    if(forgetCanopy){
+        RefreshPatrimony();
+        for(const auto id:ids)FinishForestMutation(id);
+    }
     return count;
 }
 RenderContributions WorldRegistry::Contributions()noexcept {

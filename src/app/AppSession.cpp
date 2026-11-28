@@ -1350,6 +1350,11 @@ void AppendSpectacleLights(RenderScene& render,const FrameInput& input,double ti
     render.lightCount=uint32_t(render.lights.size());
 }
 
+struct WorldForestAdmissionScope {
+    WorldRegistry& world;
+    WorldForestAdmissionScope(WorldRegistry& w,Graphics& graphics):world(w){world.BindForestAdmission(&graphics);}
+    ~WorldForestAdmissionScope(){world.BindForestAdmission(nullptr);}
+};
 RenderContributions WorldContributions(WorldRegistry& world,bool logo,bool paired=false){
     auto result=world.Contributions();
     if(logo)result.appendContext=paired?+[](void*,RenderScene& scene,const FrameInput& input,double time){
@@ -1944,6 +1949,7 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     MarkDiagnosticStartupProgress();
     DiagnosticLine("etape=chargement\r\n");FlushDiagnostic();
     graphics.Configure(xr,scene,jobs,contributions);
+    WorldForestAdmissionScope forestAdmission(world,graphics);
     DiagnosticLine(graphics.StartupCacheReport());
     StartupCheckpoint("graphics_configured");
     if(diagnostic.mg2){
@@ -2368,6 +2374,7 @@ LoopResult RunDesktop(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND 
     };
     MarkDiagnosticStartupProgress();
     DiagnosticLine("etape=chargement_ecran\r\n");configure();
+    WorldForestAdmissionScope forestAdmission(world,graphics);
     const bool traceEnabled=!diagnosticLogPath.empty();
     graphics.SetDlssDiagnostic(traceEnabled);
     graphics.SetCutDiagnostic(traceEnabled);

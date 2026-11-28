@@ -6,9 +6,12 @@
 #include <cstdint>
 #include <span>
 #include <unordered_map>
+#include <unordered_set>
+#include <optional>
 #include <vector>
 
 namespace OASIS {
+class Graphics;
 
 
 // Identity is independent of the resident tile, publication order and GPU slot.
@@ -40,6 +43,10 @@ struct CanopyPlant {
 };
 class WorldRegistry {
     GpuSceneCache cache_;
+    Graphics* forestAdmission_{}; // session owner, not owned
+    std::unordered_set<uint64_t> reservedMutationIdentities_;
+    bool MutationIdentityAllowed(uint64_t)const noexcept;
+    void FinishForestMutation(uint64_t);
     TerritorialPatrimony vegetationPatrimony_,forestPatrimony_;
     std::unordered_map<uint64_t,CanopyPlant> canopyPlants_;
     void ForgetCanopyRoute(uint64_t);
@@ -52,6 +59,11 @@ class WorldRegistry {
     static GpuResidentTileObject Record(const WorldObject&,uint64_t,uint32_t);
     GpuResidentTile CopyTile(GpuTileKey) const;
 public:
+    void BindForestAdmission(Graphics* graphics)noexcept{forestAdmission_=graphics;}
+    // Reserve logical identities before an asynchronous insertion. The caller
+    // owns the batch and retries it until committed, or explicitly cancels it.
+    std::vector<uint64_t> ReserveMutationIdentities(size_t count);
+    void CancelMutation(std::span<const uint64_t> identities);
     uint64_t Create(const WorldObject&);
 
 
@@ -60,6 +72,9 @@ public:
     // Pairs are opaque bark and cutout foliage, in that order.
     void CreateCanopyBatch(std::span<const WorldObject>,std::span<const uint32_t> assemblies,
                            std::span<const uint64_t> stableIdentities={});
+    // Atomic two-route creation; false means pending, no plant published.
+    bool TryCreateCanopyBatch(std::span<const WorldObject>,std::span<const uint32_t>,
+                              std::span<const uint64_t> stableIdentities);
     const CanopyPlant* FindCanopyPlant(uint64_t identity) const noexcept;
     bool UpdateCanopyPlant(uint64_t identity,uint32_t assembly,
                            const std::array<WorldObject,2>&,bool morphology,bool transform,bool state);
@@ -67,6 +82,10 @@ public:
     std::vector<uint64_t> ApplyBatch(std::span<const Change>,std::span<const uint64_t> removed,
                                      std::span<const WorldObject> added,
                                      std::span<const uint64_t> stableIdentities={});
+    // nullopt: producer pending; no changes/removals/insertions applied.
+    // Deferred additions must use stable or pre-reserved identities.
+    std::optional<std::vector<uint64_t>> TryApplyBatch(std::span<const Change>,std::span<const uint64_t> removed,
+                                     std::span<const WorldObject> added,std::span<const uint64_t> stableIdentities={});
     uint32_t RenderId(uint64_t identity)const;
     bool Update(uint64_t identity,const WorldObject&);
     bool Erase(uint64_t identity);
