@@ -29,6 +29,7 @@
 #include <string>
 #include <map>
 #include <future>
+#include <atomic>
 #include <chrono>
 
 struct NVSDK_NGX_Parameter;
@@ -654,6 +655,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         // Identity-only bindings, never dereferenced by the worker.
         std::array<const TerritorialPatrimony*,2> sources{};
         const ArchitecturePatrimony* architectureSource{};
+        std::map<TerritorialPatrimony::Key,std::shared_ptr<const ArchitectureRecipeNode>> architectureAuthored;
         uint64_t activeRevision{1};
         uint32_t nextId{Mg2ResidentKeyBit-1u};
         bool blocked{};
@@ -829,6 +831,11 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void ReleaseForestSourceViews(ForestGeneration&);
     uint64_t TrimForestSourceBlocks(const Mg2Pages&,uint64_t pressure);
     bool UploadForestPages(const Mg2LodCut&,ForestPreparedGeneration&,ForestGeneration&,ForestBuildWork&);
+    bool UploadForestSourceTiles(const Mg2Pages&,const std::set<ForestSourceTile>&,ForestGeneration&,ForestBuildWork&);
+    void CacheForestAcceleration(const ForestGeneration&);
+    bool PrewarmForest(std::atomic<uint32_t>&,const std::atomic<bool>&);
+    bool PrepareLoading(const XRFrame&,std::atomic<uint32_t>&,const std::atomic<bool>&);
+    bool forestLoading{};
     bool ValidateForestGeneration(ForestGeneration&,ForestBuildWork&);
     static void MatchForestShadowVariants(ForestGeneration&,const ForestGeneration*);
     void InvalidateForestShadows(Frame&,const GpuSceneCache*,const ForestGeneration*,const ForestGeneration*);

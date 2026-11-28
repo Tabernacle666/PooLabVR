@@ -285,6 +285,7 @@ Graphics::Graphics():impl_(std::make_unique<Impl>()){}Graphics::~Graphics(){if(i
     return impl_->StageForestGrowth(flora,floraIds,trees,treeIds);
 }
 void Graphics::CommitForestGrowth(){impl_->CommitForestGrowth();}
+bool Graphics::PrepareLoading(const XRFrame& f,std::atomic<uint32_t>& progress,const std::atomic<bool>& cancel){try{return impl_->PrepareLoading(f,progress,cancel);}catch(...){DumpRemovedDevice(impl_->device.Get());throw;}}
 bool Graphics::Prepare(const FrameInput& s){
     if(!impl_->developerMode&&!impl_->dlssDiagnosticEnabled)return impl_->Prepare(s);
     const int64_t start=QpcCounter();

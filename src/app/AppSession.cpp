@@ -31,6 +31,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <future>
 #include <string>
 #include <vector>
 
@@ -1948,7 +1949,34 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
     if(building)graphics.SetBuildingRevision(building->Revision(),building->Lights());
     MarkDiagnosticStartupProgress();
     DiagnosticLine("etape=chargement\r\n");FlushDiagnostic();
-    graphics.Configure(xr,scene,jobs,contributions);
+    // XR remains on this thread. A single worker temporarily owns scene
+    // preparation; the independent loading quad needs no scene resources.
+    xr.InitializeLoading(graphics.Device(),graphics.Queue());
+    std::atomic<uint32_t> loadingStage{0u};
+    std::atomic<bool> cancelLoading{false};
+    const auto awaitLoading=[&](std::future<void>& task){
+        bool requestedExit=false;
+        try{
+            while(task.wait_for(std::chrono::seconds(0))!=std::future_status::ready){
+                xr.PollEvents();
+                if(stop.load(std::memory_order_relaxed)||xr.ExitRequested()){
+                    cancelLoading.store(true,std::memory_order_release);
+                    if(xr.Running()&&!xr.ExitRequested()&&!requestedExit){xr.RequestExit();requestedExit=true;}
+                }
+                if(!xr.ExitRequested()&&xr.Running())xr.PresentLoading(loadingStage.load(std::memory_order_acquire));
+                else Sleep(5);
+                // A live loading frame is NOT a first world image.
+                MarkDiagnosticStartupProgress();
+            }
+        }catch(...){cancelLoading.store(true,std::memory_order_release);task.wait();throw;}
+        task.get();
+        return !cancelLoading.load(std::memory_order_acquire)&&!xr.ExitRequested()&&!stop.load(std::memory_order_relaxed);
+    };
+    auto configureTask=std::async(std::launch::async,[&]{
+        graphics.Configure(xr,scene,jobs,contributions);
+        loadingStage.store(1u,std::memory_order_release);
+    });
+    if(!awaitLoading(configureTask))return LoopResult::Exit;
     WorldForestAdmissionScope forestAdmission(world,graphics);
     DiagnosticLine(graphics.StartupCacheReport());
     StartupCheckpoint("graphics_configured");
@@ -2049,6 +2077,34 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         }
         mappings.StartSolarSystem();
     }
+    // Freeze the initial viewpoint. Do not advance locomotion or benchmark
+    // time, or submit a world image until initial admission/prewarm finishes.
+    if(!scene.mg2ForestParts.empty()){
+        XRFrame startupFrame;
+        while(!xr.ExitRequested()&&!stop.load(std::memory_order_relaxed)){
+            xr.PollEvents();
+            if(xr.Running()&&xr.PresentLoading(1u,&startupFrame)&&startupFrame.tracked)break;
+            MarkDiagnosticStartupProgress();Sleep(1);
+        }
+        if(xr.ExitRequested()||stop.load(std::memory_order_relaxed))return LoopResult::Exit;
+        const auto warmStart=QpcCounter();
+        auto warmTask=std::async(std::launch::async,[&]{
+            while(!cancelLoading.load(std::memory_order_acquire)){
+                if(building){
+                    const auto& local=startupFrame.input;
+                    building->Tick(world,local.head,0.f,local.farClipMeters,graphics);
+                    graphics.SetBuildingRevision(building->Revision(),building->Lights());
+                }
+                world.SetViewer(startupFrame.input.head.p.x,startupFrame.input.head.p.z);
+                if(graphics.PrepareLoading(startupFrame,loadingStage,cancelLoading))return;
+                Sleep(1);
+            }
+        });
+        if(!awaitLoading(warmTask))return LoopResult::Exit;
+        char line[160];std::snprintf(line,sizeof(line),"lod24_loading_finished ms=%.1f world_submitted=0\r\n",
+            1000.*QpcSeconds(QpcCounter()-warmStart));DiagnosticLine(line);
+    }
+    if(xr.Running())xr.PresentLoading(6u);
     MarkDiagnosticStartupProgress();
     DiagnosticLine("etape=attente_image\r\n");FlushDiagnostic();
     int64_t menuClick=0;bool finishCapture=false,exitInitiated=false;

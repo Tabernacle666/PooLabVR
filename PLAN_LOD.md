@@ -1,6 +1,6 @@
 # OASIS — Plan d'intégration LOD-24 : préchargement et résidence du patrimoine MG2
 
-**Chantier actif : LOD-24 — À INTÉGRER. Un seul commit de code sur main, sans étapes de livraison intermédiaires.**
+**Chantier actif : LOD-24 — INTÉGRATION À QUALIFIER SOUS WINDOWS. Un seul commit sur main.**
 
 ## 1. Contexte et état
 
@@ -16,14 +16,14 @@ Préparer tout le patrimoine géométrique connu avant l'entrée dans le monde, 
 
 | Ordre | Statut | Opération |
 |---:|---|---|
-| 1 | À intégrer | `GraphicsMg2Forest.cpp::PrepareTerritorialCatalog` : remplacer la demande architecturale dépendante de la caméra par l'énumération exhaustive des nœuds admissibles à chaque niveau, enfants inclus. Produire par lots sur le worker, indépendamment du choix de coupe. Conserver les sources valides, invalider localement par révision. Achever l'admission initiale et les mutations initiales avant de déclarer le catalogue stable. |
-| 2 | À intégrer | `Mg2Pages.h/.cpp` : énumérer les coupes canoniques valides uniques (racine, intermédiaires, feuilles, variantes structurelles), préserver ordre des clusters, identités, matériaux, géométrie et ABI. Pas d'énumération combinatoire des coupes adaptatives. |
-| 3 | À intégrer | `ForestSourcePool`, `EnsureForestSourceArenas`, `UploadForestPages` : extraire/réutiliser la procédure de mapping et d'upload des tuiles sources ; précharger tous les blocs vivants des segments en lots bornés par granularité de travail, pas par occupation. Conserver les offsets et fences ; réutiliser les blocs déjà présents. |
-| 4 | À intégrer | `ForestAccelerationCache`, `PackForestCut`, `UploadForestPages`, `ValidateForestGeneration` : préconstruire les accélérations des coupes canoniques sur le producteur sérialisé. Réutiliser les clés CLAS (cluster, offset primitif) et BLAS (séquence ordonnée), mutualiser les allocations ; insérer uniquement après validation GPU. Conserver les caches, pas des générations de scène entières. Ne jamais publier une génération de préchauffage comme coupe du monde. |
-| 5 | À intégrer | `UploadForestPages`, `TrimForestSourceBlocks`, `ForestAccelerationCache::TrimCold`, politique mémoire appelée en amont/aval : retirer les refus fondés sur réserve fixe (notamment Budget/20 et headroom arbitraire). Budget DXGI = télémétrie, pas plafond logiciel ; tenter les allocations légitimes, laisser WDDM gérer la résidence/pagination, conserver la source DDR4. Réserver les ressources de travail effectivement nécessaires par allocation réelle. Évincer uniquement sous pression réelle empêchant de progresser ou invalidation ; ne jamais évincer une ressource encore référencée. Traiter les échecs d'allocation réels sans boucle infinie ni dépassement ABI. |
-| 6 | À intégrer | `AppSession.cpp`, `GraphicsRender.cpp`, XR : présenter une couche de chargement légère, logo OASIS et progression issue du travail réel. Maintenir événements OpenXR et cadence xrWaitFrame/BeginFrame/EndFrame, swapchain de chargement indépendante des ressources de scène ; respecter shouldRender, acquisition/libération et fences. Aucun WaitStartup, get bloquant ou construction lourde sur le thread XR ; préparation graphique initiale et producteur hors de cette boucle, coordination explicite des propriétaires/queues. Fractionner les travaux GPU pour préserver le compositeur. Ne pas envoyer le monde ni démarrer la locomotion/benchmark avant admission et préchargement achevés, ou constat explicite d'impossibilité matérielle avec patrimoine DDR4 conservé. Basculer atomiquement à la scène réelle ; arrêter proprement si session perdue ou device removed. |
-| 7 | À intégrer | Sélection dynamique existante raster/RTX et parking des descendants : conserver fidélité et transactions. Fabrication en jeu limitée aux mutations, extensions et coupes adaptatives réellement absentes ; ne pas détruire les représentations valides au changement de distance. |
-| 8 | À intégrer | Diagnostic compact : durée et couverture du préchargement (nœuds, blocs, coupes, CLAS/BLAS), usage/budget local et nonlocal, échecs/évictions réels, progression XR, puis compteurs de constructions/transferts résiduels pendant le benchmark. Distinguer écran de chargement et première image réelle. |
+| 1 | Intégré, à qualifier | `GraphicsMg2Forest.cpp::PrepareTerritorialCatalog` : remplacer la demande architecturale dépendante de la caméra par l'énumération exhaustive des nœuds admissibles à chaque niveau, enfants inclus. Produire par lots sur le worker, indépendamment du choix de coupe. Conserver les sources valides, invalider localement par révision. Achever l'admission initiale et les mutations initiales avant de déclarer le catalogue stable. |
+| 2 | Intégré, à qualifier | `Mg2Pages.h/.cpp` : énumérer les coupes canoniques valides uniques (racine, intermédiaires, feuilles, variantes structurelles), préserver ordre des clusters, identités, matériaux, géométrie et ABI. Pas d'énumération combinatoire des coupes adaptatives. |
+| 3 | Intégré, à qualifier | `ForestSourcePool`, `EnsureForestSourceArenas`, `UploadForestPages` : extraire/réutiliser la procédure de mapping et d'upload des tuiles sources ; précharger tous les blocs vivants des segments en lots bornés par granularité de travail, pas par occupation. Conserver les offsets et fences ; réutiliser les blocs déjà présents. |
+| 4 | Intégré, à qualifier | `ForestAccelerationCache`, `PackForestCut`, `UploadForestPages`, `ValidateForestGeneration` : préconstruire les accélérations des coupes canoniques sur le producteur sérialisé. Réutiliser les clés CLAS (cluster, offset primitif) et BLAS (séquence ordonnée), mutualiser les allocations ; insérer uniquement après validation GPU. Conserver les caches, pas des générations de scène entières. Ne jamais publier une génération de préchauffage comme coupe du monde. |
+| 5 | Intégré, à qualifier | `UploadForestPages`, `TrimForestSourceBlocks`, `ForestAccelerationCache::TrimCold`, politique mémoire appelée en amont/aval : retirer les refus fondés sur réserve fixe (notamment Budget/20 et headroom arbitraire). Budget DXGI = télémétrie, pas plafond logiciel ; tenter les allocations légitimes, laisser WDDM gérer la résidence/pagination, conserver la source DDR4. Réserver les ressources de travail effectivement nécessaires par allocation réelle. Évincer uniquement sous pression réelle empêchant de progresser ou invalidation ; ne jamais évincer une ressource encore référencée. Traiter les échecs d'allocation réels sans boucle infinie ni dépassement ABI. |
+| 6 | Intégré, à qualifier | `AppSession.cpp`, `GraphicsRender.cpp`, XR : présenter une couche de chargement légère, logo OASIS et progression issue du travail réel. Maintenir événements OpenXR et cadence xrWaitFrame/BeginFrame/EndFrame, swapchain de chargement indépendante des ressources de scène ; respecter shouldRender, acquisition/libération et fences. Aucun WaitStartup, get bloquant ou construction lourde sur le thread XR ; préparation graphique initiale et producteur hors de cette boucle, coordination explicite des propriétaires/queues. Fractionner les travaux GPU pour préserver le compositeur. Ne pas envoyer le monde ni démarrer la locomotion/benchmark avant admission et préchargement achevés, ou constat explicite d'impossibilité matérielle avec patrimoine DDR4 conservé. Basculer atomiquement à la scène réelle ; arrêter proprement si session perdue ou device removed. |
+| 7 | Intégré, à qualifier | Sélection dynamique existante raster/RTX et parking des descendants : conserver fidélité et transactions. Fabrication en jeu limitée aux mutations, extensions et coupes adaptatives réellement absentes ; ne pas détruire les représentations valides au changement de distance. |
+| 8 | Intégré, à qualifier | Diagnostic compact : durée et couverture du préchargement (nœuds, blocs, coupes, CLAS/BLAS), usage/budget local et nonlocal, échecs/évictions réels, progression XR, puis compteurs de constructions/transferts résiduels pendant le benchmark. Distinguer écran de chargement et première image réelle. |
 
 ## 4. Qualification et livraison
 
@@ -38,14 +38,14 @@ Un seul commit d'intégration LOD-24, incluant le statut actualisé de ce plan. 
 | MG2-A01 à A21 / LOD-00 / LOD-21 | INTÉGRÉS |
 | LOD-23 | INTÉGRÉ, base acceptée ; qualification partielle |
 | LOD-22 | INTÉGRÉ ; première publication observée ; qualification complète reportée au run LOD-24 |
-| **LOD-24** | **À INTÉGRER — ACTIF** |
+| **LOD-24** | **INTÉGRÉ — QUALIFICATION REQUISE** |
 | LOD-31/32/41/42/43 | NON INTÉGRÉS — en attente |
 
 Ne pas ouvrir les chantiers suivants avant le résultat LOD-24. Les volets architecturaux LOD-31/32 sont déjà absorbés par LOD-22 ; le volet préchargement/résidence de LOD-42 est avancé à LOD-24.
 
 ## 6. Reprise
 
-**Ordre actuel :** lire ce plan sur main, exécuter LOD-24 intégralement en une seule intervention et un seul commit de code, sans plafond mémoire arbitraire, avec préchargement maximal VRAM/DDR4 et présentation OpenXR autonome durant toute la préparation. Mettre à jour les statuts, livrer `pull_compile_run.bat lod` et terminer par l'ordre précis de reprise. Aucune fragmentation en sous-billets.
+**Ordre actuel :** exécuter `pull_compile_run.bat lod`, vérifier le chargement XR, les traces `lod24_prewarm`, `lod24_world_gate`, la couverture du patrimoine, les constructions résiduelles et la stabilité du parcours. Aucun résultat Windows présumé. Ne pas ouvrir LOD-31 avant qualification.
 
 ## 7. LOD-31 — Généralisation de la sélection territoriale GPU
 
@@ -67,3 +67,9 @@ Sélection par racines puis coupes collectives ; erreur projetée stéréo (max 
 ## 11. LOD-43 — Qualification finale
 
 **Statut : NON INTÉGRÉ.** Vérifier la scalabilité à positions/angles/réglages identiques sur plusieurs tailles de territoire (au-delà du benchmark fixe de 20 extents), y compris regard vers le cosmos et logo masqué. Distinguer charge réellement visible, coût rayons, croissance, publication et coût indépendant de la vue. Corriger les scans/rebuilds/invalidations encore proportionnels à la population totale. Ne faire un commit LOD-43 que s'il existe une correction réelle ; sinon qualifier le chantier sans commit de code artificiel. Objectif : le coût de la vue ne croît plus mécaniquement avec le nombre d'extents hors de sa portée utile.
+
+## Qualification LOD-24
+
+La couche XR statique indique les jalons réels (configuration, admission, catalogue, sources, accélérations, prêt) sans nouvelle soumission sur la file de scène après sa création. Les coupes canoniques sont les coupes complètes par profondeur topologique de DAG et les variantes structurelles, dédupliquées par ordre des clusters. Le backend standard explicite ne possède pas le cache CLAS/BLAS : le préchauffage des accélérations y est signalé incomplet. En cas d'allocation impossible, le catalogue CPU est conservé et le journal indique la couverture et le motif. La compilation et le run VR restent à effectuer.
+
+La progression du chargement représente les jalons, non un pourcentage temporel estimé. Une coupe canonique est un paquet GPU indivisible dans cette révision : la stabilité des très grosses coupes et du premier build d'admission reste à vérifier. Les préparations CPU effectuées avant la création de la session XR ne peuvent pas présenter de couche XR.

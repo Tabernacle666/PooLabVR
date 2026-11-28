@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <future>
 #include "XR.h"
 #include "RenderContributions.h"
@@ -256,6 +257,7 @@ public:
     bool StageForestMutation(const WorldObject&,uint64_t identity);
     void ReleaseForestMutation(uint64_t identity);
     bool Prepare(const FrameInput&);
+    bool PrepareLoading(const XRFrame&,std::atomic<uint32_t>&,const std::atomic<bool>&);
     void Render(XRFrame&,const GpuProducerCoordinator& coordinator={});
     void WaitIdle();
     void RequestCapture(const std::wstring& path);

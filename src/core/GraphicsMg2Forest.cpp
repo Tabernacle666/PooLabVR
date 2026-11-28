@@ -826,7 +826,7 @@ void Graphics::Impl::ResetForest(){
     forestSelection.stagedInputs.clear();forestSelection.stagedRevision=0;
     forestStagedEntries.clear();forestMutationEntries.clear();
     forestStageRevision=forestStageCheckedSerial=forestInitialCheckedSerial=0;
-    forestStageOpen=forestStageReady=forestInitialReady=false;
+    forestStageOpen=forestStageReady=forestInitialReady=forestLoading=false;
     forestAdmissionSource=nullptr;forestAdmissionMissingTiles.clear();
     forestAdmissionStaticGeneration=0;
     forestAdmissionScanned=forestAdmissionStaticMissing=false;
@@ -1124,6 +1124,7 @@ void Graphics::Impl::InvalidateForestShadows(Frame& f,const GpuSceneCache* tiles
 }
 
 void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneCache* tiles){
+    (void)xr; // Authoring is independent of the selected camera cut.
     // A catalog snapshot needs the baked source, not a published raster
     // generation. Start the territorial CPU producer alongside the first
     // GPU selection/build, rather than forcing it to wait for a potentially
@@ -1186,7 +1187,7 @@ void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneC
         for(auto& [key,node]:work.pending)if(key.first==TerritorialDomain::Architecture)node.reset();
         if(work.inFlight)for(const auto& [key,node]:*work.inFlight)
             if(key.first==TerritorialDomain::Architecture)work.pending.insert_or_assign(key,nullptr);
-        work.architectureSource=architecture;work.blocked=false;
+        work.architectureSource=architecture;work.architectureAuthored.clear();work.blocked=false;
         if(architecture)architecture->MarkAll();
     }
     if(initialTrace)StartupCheckpoint("lod22_catalog_architecture_binding_ready");
@@ -1196,6 +1197,7 @@ void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneC
         const auto changes=architecture->Synchronize(*tiles,*forestHierarchy,meshes.ranges,modes);
         for(const auto& key:changes){
             const TerritorialCatalogKey identity{TerritorialDomain::Architecture,key};
+            work.architectureAuthored.erase(key);
             const bool existed=work.active.contains(identity)||work.pending.contains(identity)||
                 (work.inFlight&&work.inFlight->contains(identity));
             retireActive(identity);
@@ -1260,6 +1262,9 @@ void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneC
                     static_cast<unsigned long long>(candidate.architectureCacheWrites));
                 DiagnosticLine(line);
             }
+            if(work.inFlight)for(const auto& [key,node]:*work.inFlight)
+                if(key.first==TerritorialDomain::Architecture&&node&&node->architecture&&!work.pending.contains(key))
+                    work.architectureAuthored.insert_or_assign(key.second,node->architecture);
             work.inFlight.reset();work.inFlightRetired.reset();work.blocked=false;
         }catch(const std::exception& e){
             char line[384];std::snprintf(line,sizeof(line),"lod23_catalog rejected=1 reason=%s\r\n",e.what());
@@ -1268,55 +1273,33 @@ void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneC
             DiagnosticLine("lod23_catalog rejected=1 reason=unknown\r\n");restore();return;
         }
     }
-    if(architecture&&tiles&&forestInitialReady&&!work.blocked&&!work.completion.valid()&&
-       std::ranges::none_of(work.pending,[](const auto& entry){return entry.first.first!=TerritorialDomain::Architecture;})){
-        // Request the largest admissible semantic support. No fixed distance
-        // or aggregate count: use the existing stereo pixel criterion and
-        // the actual coarse-source error. Retain authored representations
-        // until a source revision or the existing memory policy retires them.
-        const auto acceptable=[&](const ArchitectureRecipeNode& node,float error){
-            if(node.routes<=node.materials.size()||!xr.viewCount)return false;
-            for(uint32_t eye=0;eye<xr.viewCount;++eye){
-                const auto& fov=xr.fov[eye];
-                const float h=std::tan(fov.angleRight)-std::tan(fov.angleLeft);
-                const float v=std::tan(fov.angleUp)-std::tan(fov.angleDown);
-                const float focal=std::max(h>.01f?float(width)/h:float(width)*.5f,
-                    v>.01f?float(height)/v:float(height)*.5f);
-                const float distance=ArchitectureSweptDistance(node.sphere,node.supportHalf,
-                    xr.eyes[eye],architectureEyeMotion[eye]);
-                if(distance<=xr.input.SceneNearZ()||error*focal>TerritorialRasterPixels*distance)return false;
-            }
-            return true;
-        };
-        const auto demand=[&](auto&& self,const std::shared_ptr<const ArchitectureRecipeNode>& node)->void{
-            if(!node)return;
-            const TerritorialCatalogKey key{TerritorialDomain::Architecture,node->key};
-            const auto active=work.active.find(key);
-            float error=node->error;
-            if(active!=work.active.end())for(const auto& rep:active->second.representations)
-                error=std::max(error,rep.geometricError);
-            if(acceptable(*node,error)){
-                if(active==work.active.end()){
-                    auto authored=std::make_shared<TerritorialPatrimony::Node>();
-                    authored->key=node->key;authored->architecture=node;
-                    authored->sourceRoutes=node->routes;authored->sourceTriangles=node->sourceTriangles;
-                    work.pending.insert_or_assign(key,std::move(authored));
-                }
-                return;
-            }
-            for(const auto& child:node->children)self(self,child);
-        };
-        const auto& nodes=architecture->Nodes();
-        TerritorialPatrimony::Key root{};root.level=3u;
-        for(auto it=nodes.lower_bound(root);it!=nodes.end();++it)
-            if(it->first.level==3u)demand(demand,it->second.recipe);
+    if(architecture&&tiles&&forestInitialReady&&!work.blocked&&!work.completion.valid()){
+        // All admissible semantic levels, including descendants of a usable
+        // parent, are authored independently of camera demand.
+        for(const auto& [identity,entry]:architecture->Nodes()){
+            const auto& node=entry.recipe;
+            if(!node||node->routes<=node->materials.size())continue;
+            const TerritorialCatalogKey key{TerritorialDomain::Architecture,identity};
+            const auto baked=work.architectureAuthored.find(identity);
+            if(baked!=work.architectureAuthored.end()&&baked->second==node)continue;
+            const auto pending=work.pending.find(key);
+            if(pending!=work.pending.end()&&pending->second)continue;
+            auto authored=std::make_shared<TerritorialPatrimony::Node>();
+            authored->key=node->key;authored->architecture=node;
+            authored->sourceRoutes=node->routes;authored->sourceTriangles=node->sourceTriangles;
+            work.pending.insert_or_assign(key,std::move(authored));
+        }
     }
     if(work.blocked||(work.pending.empty()&&work.retired.empty()))return;
     std::vector<uint32_t> alphaModes;alphaModes.reserve(surfaceData.size());
     for(const auto& surface:surfaceData)alphaModes.push_back(surface.extra.y);
     auto batch=std::make_shared<TerritorialCatalogChanges>();
     auto retired=std::make_shared<std::vector<uint32_t>>(work.retired.begin(),work.retired.end());
-    batch->swap(work.pending);work.inFlight=batch;
+    // Bound CPU work per job, not the number of resident representations.
+    constexpr size_t NodesPerJob=128;
+    while(!work.pending.empty()&&batch->size()<NodesPerJob)
+        batch->insert(work.pending.extract(work.pending.begin()));
+    work.inFlight=batch;
     work.retired.clear();work.inFlightRetired=retired;
     if(initialTrace)StartupCheckpoint("lod22_catalog_worker_launch");
     try{
@@ -2001,6 +1984,162 @@ bool Graphics::Impl::ForestPublicationReady(const GpuSceneCache* tiles){
     return ready;
 }
 
+bool Graphics::Impl::PrewarmForest(std::atomic<uint32_t>& progress,const std::atomic<bool>& cancel){
+    const auto start=QpcCounter();
+    const auto catalog=forestHierarchy;
+    ForestBuildWork build;
+    build.backend=forestBuildBackend;
+    uint64_t tilesDone=0,liveTiles=0,bytesUploaded=0,cutsDone=0,cutsAttempted=0,clasBuilt=0,blasBuilt=0,failures=0,evictedBytes=0;
+    const auto initialEvictions=forestAcceleration.evictions;
+    const char* reason="none";
+    const auto noteFailure=[&](const char* label){
+        ++failures;reason=label?label:"unknown";
+        Hr(device->GetDeviceRemovedReason(),"LOD24 prewarm device");
+    };
+    const auto report=[&](const char* phase){
+        DXGI_QUERY_VIDEO_MEMORY_INFO local{},nonlocal{};
+        if(adapter){adapter->QueryVideoMemoryInfo(0,DXGI_MEMORY_SEGMENT_GROUP_LOCAL,&local);
+            adapter->QueryVideoMemoryInfo(0,DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL,&nonlocal);}
+        uint64_t mappedTiles=0;
+        for(const auto& [key,block]:forestSourcePool.blocks)if(block->ready)mappedTiles+=block->count;
+        char line[900];std::snprintf(line,sizeof(line),
+            "lod24_prewarm phase=%s ms=%.1f nodes=%zu pages=%zu tiles=%llu live_tiles=%llu mapped_tiles=%llu uploaded=%llu cuts=%llu cuts_attempted=%llu new_clas=%llu new_blas=%llu cache_clas=%zu cache_blas=%zu cache_bytes=%llu failures=%llu reason=%s evicted_bytes=%llu cache_evictions=%llu local_usage=%llu local_budget=%llu nonlocal_usage=%llu nonlocal_budget=%llu\r\n",
+            phase,1000.*QpcSeconds(QpcCounter()-start),territorialCatalog.active.size(),catalog->PageCount(),
+            (unsigned long long)tilesDone,(unsigned long long)liveTiles,(unsigned long long)mappedTiles,(unsigned long long)bytesUploaded,(unsigned long long)cutsDone,(unsigned long long)cutsAttempted,
+            (unsigned long long)clasBuilt,(unsigned long long)blasBuilt,forestAcceleration.clas.size(),forestAcceleration.blas.size(),
+            (unsigned long long)forestAcceleration.bytes,(unsigned long long)failures,reason,(unsigned long long)evictedBytes,
+            (unsigned long long)forestAcceleration.evictions,(unsigned long long)local.CurrentUsage,(unsigned long long)local.Budget,
+            (unsigned long long)nonlocal.CurrentUsage,(unsigned long long)nonlocal.Budget);
+        DiagnosticLine(line);
+    };
+    progress.store(4u,std::memory_order_release);
+    if(!EnsureForestSourceArenas(*catalog)){noteFailure("allocation_source_sparse");report("incomplete");return false;}
+    constexpr uint64_t TileBytes=Mg2Pages::SourceTileBytes;
+    std::set<ForestSourceTile> batch;
+    const auto flush=[&]{
+        if(batch.empty())return true;
+        if(cancel.load(std::memory_order_acquire))return false;
+        for(unsigned attempt=0;attempt<2;++attempt){
+            ForestGeneration temporary;
+            build.result={};
+            if(UploadForestSourceTiles(*catalog,batch,temporary,build)){
+                tilesDone+=batch.size();bytesUploaded+=temporary.geometryUploadBytes;
+                batch.clear();return true;
+            }
+            noteFailure(build.result.lastFailure);
+            temporary.sourceBlocks.clear();
+            if(build.result.buildCode!=int(E_OUTOFMEMORY))Fail("LOD24 source upload failed outside memory pressure");
+            if(attempt)break;
+            // Only a failed allocation authorizes eviction. A generation's
+            // source and acceleration leases protect its live resources.
+            const auto pressure=uint64_t(batch.size())*TileBytes;
+            evictedBytes+=TrimForestSourceBlocks(*catalog,pressure);
+            forestAcceleration.TrimCold(pressure);
+        }
+        return false;
+    };
+    for(const auto& segment:catalog->SourceSegments())for(uint32_t k=0;k<Mg2Pages::SourceStreamCount;++k){
+        const auto stream=ForestSourceStream(k);
+        for(uint64_t first=segment.begin[k];first<segment.end[k];first+=TileBytes){
+            if(!catalog->SourceRangeLive(stream,first,TileBytes))continue;
+            ++liveTiles;
+            batch.emplace(stream,uint32_t(first/TileBytes));
+            if(batch.size()>=128u&&!flush()){report("source_incomplete");return false;}
+        }
+    }
+    if(!flush()){report("source_incomplete");return false;}
+    report("sources_ready");
+    progress.store(5u,std::memory_order_release);
+    if(build.backend==Mg2RayBackend::Standard){
+        noteFailure("standard_backend_has_no_clas_cache");report("incomplete");return false;
+    }
+    ForestSelectionWork pack;
+    pack.pages=catalog;pack.backend=build.backend;pack.acceleration=&forestAcceleration;
+    for(const auto& range:meshes.ranges)pack.meshBounds.push_back(range.bounds);
+    for(const auto& [key,node]:territorialCatalog.active)for(const auto& rep:node.representations){
+        TerritorialDrawRoute draw;draw.territory=key;draw.node=node.node;draw.bounds=rep.bounds;
+        pack.collectiveInputs.emplace(rep.mesh,std::move(draw));
+    }
+    // One canonical cut per producer packet. No world publication, no
+    // descriptor ownership, no retained raster generation or PTLAS.
+    const bool complete=catalog->ForEachCanonicalCut([&](Mg2LodCut&& cut){
+        if(cancel.load(std::memory_order_acquire))return false;
+        if(cut.selection.size()<2u)Fail("LOD24 empty canonical cut");
+        ++cutsAttempted;
+        std::vector<uint32_t> key(cut.selection.begin()+1,cut.selection.end());
+        if(forestAcceleration.backend==build.backend&&forestAcceleration.blas.contains(key)){
+            ++cutsDone;return true;
+        }
+        pack.cut=std::move(cut);
+        for(unsigned attempt=0;attempt<2;++attempt){
+            build.result={};
+            auto prepared=PackForestCut(pack);
+            {
+                ForestGeneration candidate;
+                if(UploadForestPages(pack.cut,*prepared,candidate,build)&&ValidateForestGeneration(candidate,build)){
+                    candidate.selection=pack.cut.selection;
+                    CacheForestAcceleration(candidate);
+                    ++cutsDone;clasBuilt+=candidate.newClasKeys.size();blasBuilt+=candidate.newBlasParts.size();
+                    bytesUploaded+=candidate.geometryUploadBytes;
+                    return true;
+                }
+                noteFailure(build.result.lastFailure);
+            }
+            prepared.reset();
+            if(build.result.buildCode!=int(E_OUTOFMEMORY))Fail("LOD24 canonical acceleration failed outside memory pressure");
+            if(attempt)break;
+            const auto pressure=std::max<uint64_t>(build.result.buildRequiredBytes,TileBytes);
+            evictedBytes+=TrimForestSourceBlocks(*catalog,pressure);
+            forestAcceleration.TrimCold(pressure);
+        }
+        return false;
+    });
+    const bool retained=complete&&!evictedBytes&&forestAcceleration.evictions==initialEvictions;
+    report(retained?"complete":complete?"completed_with_evictions":"acceleration_incomplete");
+    forestStatus.accelerationCacheBytes=forestAcceleration.bytes;
+    forestStatus.accelerationCacheClas=forestAcceleration.clas.size();
+    forestStatus.accelerationCacheBlas=forestAcceleration.blas.size();
+    forestStatus.accelerationCacheEvictions=forestAcceleration.evictions;
+    return retained;
+}
+
+bool Graphics::Impl::PrepareLoading(const XRFrame& xr,std::atomic<uint32_t>& progress,const std::atomic<bool>& cancel){
+    if(forestParts.empty())return true;
+    if(!diagnosticDxrEnabled)Fail("LOD24 mandatory MG2 admission requires DXR enabled");
+    if(cancel.load(std::memory_order_acquire))return false;
+    forestLoading=true;
+    descriptorAllocator.BeginRecording();managedMemory.BeginFrame();CollectManaged();
+    residency.Begin();vramCache.RequireActive();
+    const auto* tiles=contributions.residentTiles?contributions.residentTiles(contributions.context):nullptr;
+    auto& frame=frames[0];
+    PrepareForestPages(frame,xr,tiles,true);
+    const bool admitted=ForestPublicationReady(tiles);
+    frame.forestRaster.reset();
+    managedMemory.EndFrame(SubmittedFences());descriptorAllocator.EndRecording(SubmittedFences());
+    if(!admitted){
+        progress.store(2u,std::memory_order_release);
+        if(forestRequestFailed&&forestRetryUsed&&!forestBuild.requested&&!forestSelection.requested)
+            Fail("LOD24 mandatory initial admission failed");
+        return false;
+    }
+    progress.store(3u,std::memory_order_release);
+    if(territorialCatalog.blocked)Fail("LOD24 territorial catalog failed");
+    const auto* architecture=contributions.architecturePatrimony?contributions.architecturePatrimony(contributions.context):nullptr;
+    if(!forestHierarchy||territorialCatalog.completion.valid()||!territorialCatalog.pending.empty()||
+       !territorialCatalog.retired.empty()||(architecture&&!architecture->Changes().empty())||
+       forestBuild.requested||forestSelection.requested||forestPending||forestStageOpen||!forestMutationEntries.empty()||
+       forestSelection.pages!=forestHierarchy||forestSelection.territorialRevision!=territorialCatalog.activeRevision)
+        return false;
+    if(forestRequestFailed)Fail("LOD24 initial generation failed");
+    const bool complete=PrewarmForest(progress,cancel);
+    if(cancel.load(std::memory_order_acquire))return false;
+    DiagnosticLine(complete?"lod24_world_gate ready=1 prewarm_complete=1\r\n":
+        "lod24_world_gate ready=1 prewarm_complete=0 cpu_catalog_retained=1\r\n");
+    progress.store(6u,std::memory_order_release);
+    forestLoading=false;
+    return true;
+}
+
 void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuSceneCache* tiles,bool nativeCampus){
     // The previous use of this frame slot has completed on every queue.
     f.forestPreviousTlas.reset();
@@ -2152,8 +2291,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     ForestGeneration* warm=nullptr;
     for(auto it=forestGenerations.rbegin();it!=forestGenerations.rend();++it)
         if(it->use_count()==1&&(*it)->published&&!(*it)->geometryOwner&&
-           !forestRequestFailed&&forestStatus.buildRequiredBytes!=0&&
-           forestStatus.buildAvailableBytes>=forestStatus.buildRequiredBytes){
+           !forestRequestFailed){
             warm=it->get();break;
         }
     for(auto it=forestGenerations.begin();it!=forestGenerations.end();){
@@ -2358,28 +2496,8 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                             // The producer fence has completed and all addresses
                             // are validated. Optional cache insertion cannot
                             // invalidate a successfully produced generation.
-                            try{
-                                auto& cache=forestAcceleration;
-                                for(const auto& [key,entry]:candidate.clasCache){
-                                    const auto saved=cache.clas.try_emplace(key,entry).first;
-                                    cache.Remember(saved->second.storage.Get());
-                                     cache.Remember(saved->second.slot.buffer.Get());
-                                }
-                                size_t cursor=0;
-                                for(const auto& entry:candidate.blasEntries){
-                                    const auto count=candidate.selection.at(cursor++);
-                                    if(count>candidate.selection.size()-cursor)throw std::length_error("MG2 BLAS key");
-                                    std::vector<uint32_t> key(candidate.selection.begin()+cursor,
-                                        candidate.selection.begin()+cursor+count);
-                                    cursor+=count;
-                                    const auto saved=cache.blas.try_emplace(std::move(key),entry).first;
-                                    cache.Remember(saved->second->storage.Get());
-                                     cache.Remember(saved->second->slot.buffer.Get());
-                                     for(const auto& [identity,cluster]:saved->second->clusterAddresses)
-                                         cache.Remember(cluster.slot.buffer.Get());
-                                    for(const auto& storage:saved->second->dependencies)cache.Remember(storage.Get());
-                                }
-                            }catch(...){forestAcceleration.Clear();}
+                            try{CacheForestAcceleration(candidate);}
+                            catch(...){DiagnosticLine("lod24_acceleration_cache_insert_failed\r\n");}
                         }
                     }
                     // Failed candidates have never been consumed. If submitted,
@@ -2389,7 +2507,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
                         // Retry after genuine memory pressure with only live
                         // generation ownership. No quality or triangle limit.
                         const std::string_view failure=work->result.lastFailure;
-                        if(failure=="budget_vram_disponible"||failure.starts_with("allocation_")){
+                        if(failure.starts_with("allocation_")&&work->result.buildCode==int(E_OUTOFMEMORY)){
                             const auto required=work->result.buildRequiredBytes;
                             const auto available=work->result.buildAvailableBytes;
                             const auto pressure=required>available?required-available:required;
@@ -2411,6 +2529,11 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         }
         return;
     }
+    // During initial loading, wait for the catalog snapshot to settle rather
+    // than rebuilding a world generation for each authoring batch.
+    if(forestLoading&&forestInitialReady&&!forestStageOpen&&forestMutationEntries.empty()&&
+       (territorialCatalog.completion.valid()||!territorialCatalog.pending.empty()||
+        !territorialCatalog.retired.empty()))return;
     const auto liveGenerations=std::count_if(forestGenerations.begin(),forestGenerations.end(),
         [](const auto& generation){return generation.use_count()>1;});
     // Requests are latest-only: no backlog of camera snapshots can grow
@@ -2462,12 +2585,11 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         (forestHierarchy->RetiredClusters()&&selection.retiredGenerations!=forestStatus.retiredGenerations);
     // Cached DXGI budget/usage: do not scan managed allocations to decide
     // whether a new selection is worth launching. The build still performs
-    // its own authoritative budget check (including its reserve).
+    // actual allocation outcomes are authoritative; the budget is telemetry.
     const UINT64 budget=residency.Budget(),usage=residency.Used();
     const UINT64 available=budget>usage?budget-usage:0;
     const bool resourceProgress=forestStatus.retiredGenerations!=forestRetryRetired||
-        (available>forestRetryAvailable&&
-         (!forestStatus.buildRequiredBytes||available>=forestStatus.buildRequiredBytes));
+        available>forestRetryAvailable;
     // One immediate recovery attempt permits the existing cold-cache trim to
     // take effect. Further identical failures wait for demand/resource progress.
     if(!demandChanged){
@@ -3347,143 +3469,18 @@ uint64_t Graphics::Impl::TrimForestSourceBlocks(const Mg2Pages& catalog,uint64_t
     return releasedBytes; // heap owners release only after the unmap fence
 }
 
-bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGeneration& prepared,ForestGeneration& output,ForestBuildWork& work){
-    // Only actual local memory availability constrains new GPU allocations.
-    // The headroom is a reserve, not a fixed construction allowance.
-    work.result.buildRequiredBytes=work.result.buildAvailableBytes=0;
-    DXGI_QUERY_VIDEO_MEMORY_INFO memory{};
-    if(!adapter||FAILED(adapter->QueryVideoMemoryInfo(0,DXGI_MEMORY_SEGMENT_GROUP_LOCAL,&memory))){
-        work.result.lastFailure="budget_vram_indisponible";
-        work.result.buildCode=0;
-        return false;
-    }
-    const UINT64 reserve=std::max<UINT64>(work.headroom,memory.Budget/20u);
-    UINT64 available=GpuSubtract(GpuSubtract(memory.Budget,reserve),memory.CurrentUsage);
-    work.result.buildAvailableBytes=available;
-    const auto allocation=[](UINT64 bytes){
-        return bytes?Align(bytes,UINT64(D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)):UINT64(0);
-    };
-    UINT64 immutableAllocation=0;
-    const auto fits=[&](UINT64 bytes){
-        bytes+=immutableAllocation;
-        work.result.buildRequiredBytes=bytes;
-        if(bytes<=available)return true;
-        work.result.lastFailure="budget_vram_disponible";
-        work.result.buildCode=0;
-        return false;
-    };
-    if(prepared.failure){
-        work.result.lastFailure=prepared.failure;
-        work.result.buildCode=0;
-        return false;
-    }
-    const auto make=[&](UINT64 bytes,D3D12_HEAP_TYPE type,D3D12_RESOURCE_STATES state,
-                        D3D12_RESOURCE_FLAGS flags=D3D12_RESOURCE_FLAG_NONE){
-        const auto begin=QpcCounter();
+bool Graphics::Impl::UploadForestSourceTiles(const Mg2Pages& catalog,
+    const std::set<ForestSourceTile>& tiles,ForestGeneration& output,ForestBuildWork& work){
+    constexpr UINT64 TileBytes=Mg2Pages::SourceTileBytes;
+    auto& pool=forestSourcePool;
+    const auto make=[&](UINT64 bytes,D3D12_HEAP_TYPE type,D3D12_RESOURCE_STATES state){
         ComPtr<ID3D12Resource> resource;
-        const auto heap=Heap(type);
-        const auto desc=Buffer(std::max(UINT64(256),bytes),flags);
-        const auto result=device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,state,
+        const auto heap=Heap(type);const auto desc=Buffer(std::max(UINT64(256),bytes));
+        const auto hr=device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,state,
             nullptr,IID_PPV_ARGS(&resource));
-        work.allocationMs+=float(1000.*QpcSeconds(QpcCounter()-begin));
-        if(FAILED(result))return ComPtr<ID3D12Resource>{};
+        if(FAILED(hr)){work.result.buildCode=int(hr);resource.Reset();}
         return resource;
     };
-    const auto upload=[&](const void* data,size_t bytes){
-        auto source=make(bytes,D3D12_HEAP_TYPE_UPLOAD,D3D12_RESOURCE_STATE_GENERIC_READ);
-        const auto begin=QpcCounter();
-        const D3D12_RANGE none{};
-        void* memory{};
-        if(!source||FAILED(source->Map(0,&none,&memory)))return ComPtr<ID3D12Resource>{};
-        std::memcpy(memory,data,bytes);
-        source->Unmap(0,nullptr);
-        work.uploadMs+=float(1000.*QpcSeconds(QpcCounter()-begin));
-        return source;
-    };
-    const auto submit=[&]{
-        const auto begin=QpcCounter();
-        output.commands.Submit(forestBuildQueue);
-        output.fence=forestBuildQueue.Signal();
-        work.submitMs+=float(1000.*QpcSeconds(QpcCounter()-begin));
-    };
-    const auto& routes=prepared.routes;
-    output.routeBytes=uint32_t(routes.size()*sizeof(Mg2InstanceRoute));
-    output.variants=cut.variants;
-    const auto& compatible=prepared.compatible;
-    if(cut.clusters.empty()||compatible){
-        // Keep the raster and BLAS resources when only assignments change.
-        // TLAS updates follow the existing generation-change path.
-        const auto failRoute=[&](const char* reason){
-            work.result.lastFailure=reason;work.result.buildCode=0;return false;
-        };
-        if(!compatible)return failRoute("routes_geometrie_incompatible");
-        if(compatible->bytes<compatible->routeBytes||
-           UINT64(compatible->bytes-compatible->routeBytes)+output.routeBytes>UINT32_MAX)
-            return failRoute("routes_generation_byte_abi");
-        const UINT64 bytes=output.routeBytes;
-        if(!fits(allocation(bytes)))return false;
-        const auto geometry=make(bytes,D3D12_HEAP_TYPE_DEFAULT,D3D12_RESOURCE_STATE_COPY_DEST);
-        const auto source=upload(routes.data(),size_t(bytes));
-        if(!geometry||!source)return failRoute("allocation_routes");
-        CommandsInit(output.commands,D3D12_COMMAND_LIST_TYPE_DIRECT);
-        output.commands.Reset();
-        auto* list=output.commands.list.Get();
-        list->CopyBufferRegion(geometry.Get(),0,source.Get(),0,bytes);
-        Transition(list,geometry.Get(),D3D12_RESOURCE_STATE_COPY_DEST,ShaderRead);
-        output.geometryOwner=compatible->geometryOwner?compatible->geometryOwner:compatible;
-        output.views=compatible->views;
-        output.views[ForestGeneration::Routes]={};
-        output.viewRequests[ForestGeneration::Routes]={geometry.Get(),0,uint32_t(routes.size()),sizeof(Mg2InstanceRoute)};
-        output.resources.push_back(geometry);
-        output.staging.push_back(source);
-        output.backend=compatible->backend;
-        output.blasStart=compatible->blasStart;
-        output.blasCapacity=compatible->blasCapacity;
-        output.clasCapacity=compatible->clasCapacity;
-        output.pages=compatible->pages;
-        output.clusters=compatible->clusters;
-        output.rasterMeshlets=compatible->rasterMeshlets;
-        output.triangles=compatible->triangles;
-        output.bytes=compatible->bytes-compatible->routeBytes+output.routeBytes;
-        submit();
-        return true;
-    }
-    const auto& pack=prepared.pack;
-    const auto& layouts=prepared.layouts;
-    const auto& parts=prepared.parts;
-    const auto bounds=prepared.bounds,cameraBoxes=prepared.cameraBoxes;
-    const bool clustered=work.backend!=Mg2RayBackend::Standard;
-    if(pack.bytes.size()>UINT32_MAX){
-        work.result.lastFailure="limite_abi_octets_mg2";
-        work.result.buildCode=0;
-        return false;
-    }
-    const auto& catalog=prepared.pages;
-    if(!catalog)return false;
-    // LOD-23: the vertex and index streams have independent stable GPU
-    // addresses. Reserve virtual capacity, map only demanded physical tiles.
-    // Keep the shader ABI (element offsets) and all CLAS/BLAS identities.
-    constexpr UINT64 TileBytes=Mg2Pages::SourceTileBytes;
-    static_assert(TileBytes==D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES);
-    auto& pool=forestSourcePool;
-    if(prepared.sourceTiles.empty()){
-        work.result.lastFailure="a06_source_abi";return false;
-    }
-    if(!EnsureForestSourceArenas(*catalog)){
-        work.result.lastFailure="allocation_source_sparse";return false;
-    }
-    for(const auto id:prepared.arenaIds){
-        const auto& arena=pool.arenas.at(id);
-        const auto count=[&](ForestSourceStream stream){
-            const auto k=uint32_t(stream);
-            const auto logicalEnd=std::min(arena.end[k],catalog->SourceBytes(stream));
-            return uint32_t((logicalEnd-arena.begin[k])/Mg2Pages::SourceStride(stream));
-        };
-        output.sourceArenas.push_back({arena.resources[0],arena.resources[1],
-            count(ForestSourceStream::Vertices),count(ForestSourceStream::Indices)});
-    }
-    output.sourceUniqueClusters=prepared.sourceUniqueClusters;
-    output.sourceDemandBytes=UINT64(prepared.sourceTiles.size())*TileBytes;
     const auto lookup=[&](ForestSourceTile tile)->std::shared_ptr<ForestSourceBlock>{
         auto it=pool.blocks.upper_bound(tile);
         if(it==pool.blocks.begin())return {};
@@ -3503,20 +3500,13 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
     };
     std::vector<ForestSourceTile> missingTiles;
     std::set<ForestSourceTile> heldBlocks;
-    for(const auto tile:prepared.sourceTiles){
+    for(const auto tile:tiles){
         auto existing=lookup(tile);
         if(!existing){missingTiles.push_back(tile);continue;}
         existing->lastUse=++pool.clock;
         if(heldBlocks.emplace(existing->stream,existing->first).second)output.sourceBlocks.push_back(std::move(existing));
     }
-    immutableAllocation=UINT64(missingTiles.size())*TileBytes;
-    const auto initialRequired=immutableAllocation+allocation(pack.bytes.size());
-    output.sourceEvictedBytes=TrimForestSourceBlocks(*catalog,GpuSubtract(initialRequired,available));
-    if(output.sourceEvictedBytes&&SUCCEEDED(adapter->QueryVideoMemoryInfo(0,DXGI_MEMORY_SEGMENT_GROUP_LOCAL,&memory))){
-        available=GpuSubtract(GpuSubtract(memory.Budget,reserve),memory.CurrentUsage);
-        work.result.buildAvailableBytes=available;
-    }
-    if(!fits(allocation(pack.bytes.size())))return false;
+    const UINT64 immutableAllocation=UINT64(missingTiles.size())*TileBytes;
     if(!missingTiles.empty()){
         const auto staging=make(immutableAllocation,D3D12_HEAP_TYPE_UPLOAD,D3D12_RESOURCE_STATE_GENERIC_READ);
         void* mapped{};const D3D12_RANGE none{};
@@ -3525,7 +3515,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         }
         const auto uploadBegin=QpcCounter();
         for(size_t i=0;i<missingTiles.size();++i)
-            catalog->PackSourceTile(missingTiles[i].first,UINT64(missingTiles[i].second)*TileBytes,
+            catalog.PackSourceTile(missingTiles[i].first,UINT64(missingTiles[i].second)*TileBytes,
                 std::span<std::byte>(static_cast<std::byte*>(mapped)+i*TileBytes,size_t(TileBytes)));
         staging->Unmap(0,nullptr);
         work.uploadMs+=float(1000.*QpcSeconds(QpcCounter()-uploadBegin));
@@ -3589,13 +3579,169 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         }
         output.geometryUploadBytes=immutableAllocation;
     }
+
+    return true;
+}
+
+void Graphics::Impl::CacheForestAcceleration(const ForestGeneration& candidate){
+    auto& cache=forestAcceleration;
+    for(const auto& [key,entry]:candidate.clasCache){
+        const auto saved=cache.clas.try_emplace(key,entry).first;
+        cache.Remember(saved->second.storage.Get());
+         cache.Remember(saved->second.slot.buffer.Get());
+    }
+    size_t cursor=0;
+    for(const auto& entry:candidate.blasEntries){
+        const auto count=candidate.selection.at(cursor++);
+        if(count>candidate.selection.size()-cursor)throw std::length_error("MG2 BLAS key");
+        std::vector<uint32_t> key(candidate.selection.begin()+cursor,
+            candidate.selection.begin()+cursor+count);
+        cursor+=count;
+        const auto saved=cache.blas.try_emplace(std::move(key),entry).first;
+        cache.Remember(saved->second->storage.Get());
+         cache.Remember(saved->second->slot.buffer.Get());
+         for(const auto& [identity,cluster]:saved->second->clusterAddresses)
+             cache.Remember(cluster.slot.buffer.Get());
+        for(const auto& storage:saved->second->dependencies)cache.Remember(storage.Get());
+    }
+
+}
+
+bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGeneration& prepared,ForestGeneration& output,ForestBuildWork& work){
+    // DXGI budget is telemetry. Real allocations and WDDM decide whether
+    // the working set can be supported, without a fixed reserve.
+    work.result.buildRequiredBytes=work.result.buildAvailableBytes=0;
+    DXGI_QUERY_VIDEO_MEMORY_INFO memory{};
+    if(adapter&&SUCCEEDED(adapter->QueryVideoMemoryInfo(0,DXGI_MEMORY_SEGMENT_GROUP_LOCAL,&memory)))
+        work.result.buildAvailableBytes=GpuSubtract(memory.Budget,memory.CurrentUsage);
+    const auto allocation=[](UINT64 bytes){
+        return bytes?Align(bytes,UINT64(D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)):UINT64(0);
+    };
+    UINT64 immutableAllocation=0;
+    const auto fits=[&](UINT64 bytes){
+        work.result.buildRequiredBytes=bytes+immutableAllocation;
+        return true;
+    };
+    if(prepared.failure){
+        work.result.lastFailure=prepared.failure;
+        work.result.buildCode=0;
+        return false;
+    }
+    const auto make=[&](UINT64 bytes,D3D12_HEAP_TYPE type,D3D12_RESOURCE_STATES state,
+                        D3D12_RESOURCE_FLAGS flags=D3D12_RESOURCE_FLAG_NONE){
+        const auto begin=QpcCounter();
+        ComPtr<ID3D12Resource> resource;
+        const auto heap=Heap(type);
+        const auto desc=Buffer(std::max(UINT64(256),bytes),flags);
+        const auto result=device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,state,
+            nullptr,IID_PPV_ARGS(&resource));
+        work.allocationMs+=float(1000.*QpcSeconds(QpcCounter()-begin));
+        if(FAILED(result)){work.result.buildCode=int(result);return ComPtr<ID3D12Resource>{};}
+        return resource;
+    };
+    const auto upload=[&](const void* data,size_t bytes){
+        auto source=make(bytes,D3D12_HEAP_TYPE_UPLOAD,D3D12_RESOURCE_STATE_GENERIC_READ);
+        const auto begin=QpcCounter();
+        const D3D12_RANGE none{};
+        void* memory{};
+        if(!source||FAILED(source->Map(0,&none,&memory)))return ComPtr<ID3D12Resource>{};
+        std::memcpy(memory,data,bytes);
+        source->Unmap(0,nullptr);
+        work.uploadMs+=float(1000.*QpcSeconds(QpcCounter()-begin));
+        return source;
+    };
+    const auto submit=[&]{
+        const auto begin=QpcCounter();
+        output.commands.Submit(forestBuildQueue);
+        output.fence=forestBuildQueue.Signal();
+        work.submitMs+=float(1000.*QpcSeconds(QpcCounter()-begin));
+    };
+    const auto& routes=prepared.routes;
+    output.routeBytes=uint32_t(routes.size()*sizeof(Mg2InstanceRoute));
+    output.variants=cut.variants;
+    const auto& compatible=prepared.compatible;
+    if(cut.clusters.empty()||compatible){
+        // Keep the raster and BLAS resources when only assignments change.
+        // TLAS updates follow the existing generation-change path.
+        const auto failRoute=[&](const char* reason){
+            work.result.lastFailure=reason;work.result.buildCode=0;return false;
+        };
+        if(!compatible)return failRoute("routes_geometrie_incompatible");
+        if(compatible->bytes<compatible->routeBytes||
+           UINT64(compatible->bytes-compatible->routeBytes)+output.routeBytes>UINT32_MAX)
+            return failRoute("routes_generation_byte_abi");
+        const UINT64 bytes=output.routeBytes;
+        if(!fits(allocation(bytes)))return false;
+        const auto geometry=make(bytes,D3D12_HEAP_TYPE_DEFAULT,D3D12_RESOURCE_STATE_COPY_DEST);
+        const auto source=upload(routes.data(),size_t(bytes));
+        if(!geometry||!source){work.result.lastFailure="allocation_routes";return false;}
+        CommandsInit(output.commands,D3D12_COMMAND_LIST_TYPE_DIRECT);
+        output.commands.Reset();
+        auto* list=output.commands.list.Get();
+        list->CopyBufferRegion(geometry.Get(),0,source.Get(),0,bytes);
+        Transition(list,geometry.Get(),D3D12_RESOURCE_STATE_COPY_DEST,ShaderRead);
+        output.geometryOwner=compatible->geometryOwner?compatible->geometryOwner:compatible;
+        output.views=compatible->views;
+        output.views[ForestGeneration::Routes]={};
+        output.viewRequests[ForestGeneration::Routes]={geometry.Get(),0,uint32_t(routes.size()),sizeof(Mg2InstanceRoute)};
+        output.resources.push_back(geometry);
+        output.staging.push_back(source);
+        output.backend=compatible->backend;
+        output.blasStart=compatible->blasStart;
+        output.blasCapacity=compatible->blasCapacity;
+        output.clasCapacity=compatible->clasCapacity;
+        output.pages=compatible->pages;
+        output.clusters=compatible->clusters;
+        output.rasterMeshlets=compatible->rasterMeshlets;
+        output.triangles=compatible->triangles;
+        output.bytes=compatible->bytes-compatible->routeBytes+output.routeBytes;
+        submit();
+        return true;
+    }
+    const auto& pack=prepared.pack;
+    const auto& layouts=prepared.layouts;
+    const auto& parts=prepared.parts;
+    const auto bounds=prepared.bounds,cameraBoxes=prepared.cameraBoxes;
+    const bool clustered=work.backend!=Mg2RayBackend::Standard;
+    if(pack.bytes.size()>UINT32_MAX){
+        work.result.lastFailure="limite_abi_octets_mg2";
+        work.result.buildCode=0;
+        return false;
+    }
+    const auto& catalog=prepared.pages;
+    if(!catalog)return false;
+    // LOD-23: the vertex and index streams have independent stable GPU
+    // addresses. Reserve virtual capacity, map only demanded physical tiles.
+    // Keep the shader ABI (element offsets) and all CLAS/BLAS identities.
+    constexpr UINT64 TileBytes=Mg2Pages::SourceTileBytes;
+    static_assert(TileBytes==D3D12_TILED_RESOURCE_TILE_SIZE_IN_BYTES);
+    auto& pool=forestSourcePool;
+    if(prepared.sourceTiles.empty()){
+        work.result.lastFailure="a06_source_abi";return false;
+    }
+    if(!EnsureForestSourceArenas(*catalog)){
+        work.result.lastFailure="allocation_source_sparse";return false;
+    }
+    for(const auto id:prepared.arenaIds){
+        const auto& arena=pool.arenas.at(id);
+        const auto count=[&](ForestSourceStream stream){
+            const auto k=uint32_t(stream);
+            const auto logicalEnd=std::min(arena.end[k],catalog->SourceBytes(stream));
+            return uint32_t((logicalEnd-arena.begin[k])/Mg2Pages::SourceStride(stream));
+        };
+        output.sourceArenas.push_back({arena.resources[0],arena.resources[1],
+            count(ForestSourceStream::Vertices),count(ForestSourceStream::Indices)});
+    }
+    output.sourceUniqueClusters=prepared.sourceUniqueClusters;
+    output.sourceDemandBytes=UINT64(prepared.sourceTiles.size())*TileBytes;
+    if(!UploadForestSourceTiles(*catalog,prepared.sourceTiles,output,work))return false;
+    immutableAllocation=output.geometryUploadBytes;
     for(const auto& [first,b]:pool.blocks)output.sourceResidentBytes+=UINT64(b->count)*TileBytes;
     if(!fits(allocation(pack.bytes.size())))return false;
     const auto geometry=make(pack.bytes.size(),D3D12_HEAP_TYPE_DEFAULT,D3D12_RESOURCE_STATE_COPY_DEST);
     const auto source=upload(pack.bytes.data(),pack.bytes.size());
     if(!geometry||!source){
         work.result.lastFailure="allocation_geometrie";
-        work.result.buildCode=0;
         return false;
     }
     const auto sourceAddress=[&](ForestSourceStream stream,UINT64 logical,UINT64 bytes){
@@ -3616,14 +3762,14 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
     ComPtr<ID3D12Resource> addresses;
     const auto fail=[&](const char* reason,int code=0){
         work.result.lastFailure=reason;
-        work.result.buildCode=code;
+        if(code||!std::string_view(reason).starts_with("allocation_"))work.result.buildCode=code;
         return false;
     };
     const UINT64 addressBytes=clustered?prepared.newBlasParts.size()*sizeof(UINT64):0u;
     if(forestBuildQueries){
         output.buildReadback=make(3u*sizeof(UINT64),
             D3D12_HEAP_TYPE_READBACK,D3D12_RESOURCE_STATE_COPY_DEST);
-        if(!output.buildReadback)return fail("lecture_differee");
+        if(!output.buildReadback)return fail("allocation_lecture_differee");
     }
     if(forestBuildQueries)list->EndQuery(forestBuildQueries.Get(),D3D12_QUERY_TYPE_TIMESTAMP,0u);
     if(clustered){
@@ -3811,7 +3957,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
             }
             if(cursor!=initial.size())return fail("identite_blas_incremental");
             const auto blasArgBuffer=upload(blasArgs.data(),blasArgs.size()*sizeof(blasArgs.front()));
-            if(!blasArgBuffer)return fail("arguments_clas_blas");
+            if(!blasArgBuffer)return fail("allocation_arguments_clas_blas");
             const ClusterBuffers blasBuffers{blas->GetGPUVirtualAddress(),scratchAddress,
                 {newBlasAddresses->GetGPUVirtualAddress(),sizeof(UINT64)},{blasArgBuffer->GetGPUVirtualAddress(),sizeof(blasArgs.front())}};
             if(forestBuildQueries)list->EndQuery(forestBuildQueries.Get(),D3D12_QUERY_TYPE_TIMESTAMP,1u);

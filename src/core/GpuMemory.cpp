@@ -1,21 +1,7 @@
 #include "GpuMemory.h"
 namespace OASIS {
 namespace {
-uint64_t MinimumResourceBytes(const D3D12_RESOURCE_DESC& d){
-    if(d.Dimension==D3D12_RESOURCE_DIMENSION_BUFFER)return d.Width;
-    uint64_t pixelBytes=0;
-    switch(d.Format){
-        case DXGI_FORMAT_R32_FLOAT:case DXGI_FORMAT_R32_UINT:case DXGI_FORMAT_R32_SINT:case DXGI_FORMAT_R32_TYPELESS:
-        case DXGI_FORMAT_R8G8B8A8_UNORM:case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:case DXGI_FORMAT_R16G16_FLOAT:pixelBytes=4;break;
-        case DXGI_FORMAT_R16_FLOAT:pixelBytes=2;break;
-        case DXGI_FORMAT_R16G16B16A16_FLOAT:case DXGI_FORMAT_R32G32_FLOAT:pixelBytes=8;break;
-        case DXGI_FORMAT_R32G32B32A32_FLOAT:pixelBytes=16;break;
-        default:return 0;
-    }
-    uint64_t bytes=d.Width;
-    for(uint64_t factor:{uint64_t(d.Height),uint64_t(d.DepthOrArraySize),pixelBytes}){if(factor&&bytes>UINT64_MAX/factor)return UINT64_MAX;bytes*=factor;}
-    return bytes;
-}
+
 }
 void Residency::Initialize(ID3D12Device3* device,IDXGIAdapter3* adapter){device_=device;adapter_=adapter;Hr(device->CreateFence(0,D3D12_FENCE_FLAG_NONE,IID_PPV_ARGS(&fence_)),"residency fence");}
 uint32_t Residency::Add(ID3D12Pageable* object,uint64_t bytes,GpuResidencyClass memoryClass,bool resident){
@@ -29,8 +15,9 @@ uint32_t Residency::OldestEvictable(bool cacheOnly)const{
     uint32_t candidate=Invalid;for(uint32_t i=0;i<count_;++i){const auto& e=entries_[i];if(!e.object||e.required||!e.resident||e.memoryClass==GpuResidencyClass::Pinned||!GpuFencesComplete(e.fences,completed_)||fence_->GetCompletedValue()<e.residencyFence)continue;if(cacheOnly&&e.memoryClass!=GpuResidencyClass::Cacheable)continue;if(candidate==Invalid||GpuEvictionPriority(e.memoryClass)<GpuEvictionPriority(entries_[candidate].memoryClass)||(e.memoryClass==entries_[candidate].memoryClass&&e.lastUse<entries_[candidate].lastUse))candidate=i;}return candidate;
 }
 bool Residency::Reserve(uint64_t bytes,uint64_t completed,uint64_t headroom){
-    completed_[2]=completed;RefreshBudget();uint64_t target=GpuSubtract(budget_.Budget,std::max(headroom,budget_.Budget/20)),usage=budget_.CurrentUsage;
-    while(bytes>target||usage>target-bytes){uint32_t candidate=OldestEvictable(true);if(candidate==Invalid)candidate=OldestEvictable(false);if(candidate==Invalid)return false;auto& e=entries_[candidate];auto* object=e.object;if(FAILED(device_->Evict(1,&object)))return false;e.resident=false;usage=GpuSubtract(usage,e.bytes);}return true;
+    (void)bytes;(void)headroom;completed_[2]=completed;RefreshBudget();
+    // Advisory only. Actual D3D12 allocations are authoritative.
+    return true;
 }
 void Residency::Begin(){for(auto& e:entries_){e.required=e.object&&e.memoryClass==GpuResidencyClass::Pinned;e.shaderOnly=false;}}
 void Residency::Require(uint32_t id){if(id>=count_||!entries_[id].object)Fail("residency ID");auto& e=entries_[id];e.required=true;e.shaderOnly=false;e.lastUse=++useSerial_;}
@@ -40,9 +27,9 @@ void Residency::RequireShader(uint32_t id){
     e.required=true;e.lastUse=++useSerial_;
 }
 bool Residency::Prepare(uint64_t completed,uint64_t headroom){
-    completed_[2]=completed;RefreshBudget();uint64_t incoming=0;bool hasIncoming=false;for(const auto& e:entries_)if(e.object&&e.required&&!e.resident){incoming+=e.bytes;hasIncoming=true;}uint64_t target=GpuSubtract(budget_.Budget,std::max(headroom,budget_.Budget/20)),usage=budget_.CurrentUsage;
-    while(incoming>target||usage>target-incoming){uint32_t oldest=OldestEvictable(true);if(oldest==Invalid)oldest=OldestEvictable(false);if(oldest==Invalid)break;auto& e=entries_[oldest];auto* object=e.object;if(FAILED(device_->Evict(1,&object)))return false;e.resident=false;usage=GpuSubtract(usage,e.bytes);}
-    if(incoming>target||usage>target-incoming)return false;
+    (void)headroom;completed_[2]=completed;RefreshBudget();
+    bool hasIncoming=false;
+    for(const auto& e:entries_)if(e.object&&e.required&&!e.resident)hasIncoming=true;
     if(hasIncoming){
         // EnqueueMakeResident signals in call order. Restore general resources
         // before shader-only assets so a copy need not wait for a later texture batch.
@@ -52,8 +39,22 @@ bool Residency::Prepare(uint64_t completed,uint64_t headroom){
                 restoreObjects_.push_back(e.object);
             if(restoreObjects_.empty())continue;
             const uint64_t signal=serial_+1;
-            HRESULT h=device_->EnqueueMakeResident(D3D12_RESIDENCY_FLAG_DENY_OVERBUDGET,
-                uint32_t(restoreObjects_.size()),restoreObjects_.data(),fence_.Get(),signal);
+            auto restore=[&]{return device_->EnqueueMakeResident(D3D12_RESIDENCY_FLAG_NONE,
+                uint32_t(restoreObjects_.size()),restoreObjects_.data(),fence_.Get(),signal);};
+            HRESULT h=restore();
+            if(h==E_OUTOFMEMORY){
+                uint64_t freed=0,needed=0;
+                for(const auto& e:entries_)if(e.object&&e.required&&!e.resident&&e.shaderOnly==shaderOnly)needed+=e.bytes;
+                while(freed<needed){
+                    uint32_t oldest=OldestEvictable(true);
+                    if(oldest==Invalid)oldest=OldestEvictable(false);
+                    if(oldest==Invalid)break;
+                    auto& e=entries_[oldest];auto* object=e.object;
+                    if(FAILED(device_->Evict(1,&object)))break;
+                    e.resident=false;freed+=e.bytes;
+                }
+                if(freed)h=restore();
+            }
             if(FAILED(h))return false;
             serial_=signal;
             // A successful first batch remains tracked even if the second fails.
@@ -104,15 +105,15 @@ bool GpuVramCache::Destroy(uint32_t index,const GpuFenceValues& completed){
     if(index>=entries_.size())return false;auto& e=entries_[index];if(!e.resource||e.users||!GpuFencesComplete(e.fences,completed)||!residency_->CanRemove(e.residency))return false;residency_->Remove(e.residency);e={};return true;
 }
 bool GpuVramCache::MakeRoom(uint64_t bytes,const GpuFenceValues& completed,uint64_t headroom){
-    if(!residency_)return false;residency_->SetCompleted(completed);residency_->RefreshBudget();uint64_t target=GpuSubtract(residency_->Budget(),std::max(headroom,residency_->Budget()/20)),usage=residency_->Used();
-    while(bytes>target||usage>GpuSubtract(target,bytes)){uint32_t oldest=Invalid;for(uint32_t i=0;i<entries_.size();++i){const auto& e=entries_[i];if(!e.resource||e.users||!residency_->Resident(e.residency)||!GpuFencesComplete(e.fences,completed)||!residency_->CanRemove(e.residency))continue;if(oldest==Invalid||e.lastUse<entries_[oldest].lastUse)oldest=i;}if(oldest==Invalid)return false;uint64_t freed=entries_[oldest].bytes;if(!Destroy(oldest,completed))return false;usage=GpuSubtract(usage,freed);}residency_->RefreshBudget();return true;
+    if(!residency_)return false;residency_->SetCompleted(completed);residency_->RefreshBudget();(void)headroom;uint64_t freedTotal=0;
+    while(freedTotal<bytes){uint32_t oldest=Invalid;for(uint32_t i=0;i<entries_.size();++i){const auto& e=entries_[i];if(!e.resource||e.users||!residency_->Resident(e.residency)||!GpuFencesComplete(e.fences,completed)||!residency_->CanRemove(e.residency))continue;if(oldest==Invalid||e.lastUse<entries_[oldest].lastUse)oldest=i;}if(oldest==Invalid)return false;uint64_t freed=entries_[oldest].bytes;if(!Destroy(oldest,completed))return false;freedTotal+=freed;}residency_->RefreshBudget();return true;
 }
 GpuCacheAcquire GpuVramCache::Acquire(const GpuCacheKey& key,const D3D12_RESOURCE_DESC& desc,D3D12_RESOURCE_STATES state,bool autoRequire,const GpuFenceValues& completed,uint64_t headroom,const wchar_t* name){
     if(!device_||!residency_||!key.Valid())return {};
     for(auto& e:entries_)if(e.resource&&e.valid&&GpuCacheMatch(e.key,key)&&Compatible(e.desc,desc)){++e.users;e.autoRequire|=autoRequire;e.lastUse=++useSerial_;if(autoRequire)residency_->Require(e.residency);return {e.resource,e.residency,true};}
     auto allocation=device_->GetResourceAllocationInfo(0,1,&desc);if(allocation.SizeInBytes==UINT64_MAX||!allocation.SizeInBytes)return {};if(!residency_->Reserve(allocation.SizeInBytes,completed[2],headroom)){MakeRoom(allocation.SizeInBytes,completed,headroom);if(!residency_->Reserve(allocation.SizeInBytes,completed[2],headroom))return {};}
     D3D12_HEAP_PROPERTIES heap{};heap.Type=D3D12_HEAP_TYPE_DEFAULT;heap.CreationNodeMask=heap.VisibleNodeMask=1;ComPtr resource;HRESULT hr=device_->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,state,nullptr,IID_PPV_ARGS(&resource));
-    if(hr==E_OUTOFMEMORY){MakeRoom(UINT64_MAX/2,completed,headroom);hr=device_->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,state,nullptr,IID_PPV_ARGS(&resource));}
+    if(hr==E_OUTOFMEMORY){MakeRoom(allocation.SizeInBytes,completed,headroom);hr=device_->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,state,nullptr,IID_PPV_ARGS(&resource));}
     if(FAILED(hr)){if(hr!=E_OUTOFMEMORY)Hr(hr,"cacheable GPU resource");return {};}
     if(name)resource->SetName(name);Entry e;e.key=key;e.desc=desc;e.resource=resource;e.bytes=allocation.SizeInBytes;e.residency=residency_->Add(resource.Get(),e.bytes,GpuResidencyClass::Cacheable,true);e.users=1;e.autoRequire=autoRequire;e.lastUse=++useSerial_;if(autoRequire)residency_->Require(e.residency);auto empty=std::find_if(entries_.begin(),entries_.end(),[](const Entry& item){return !item.resource;});if(empty==entries_.end())entries_.push_back(std::move(e));else *empty=std::move(e);return {resource,ResidencyId(resource.Get()),false};
 }
@@ -132,8 +133,11 @@ void GpuManagedMemory::EndFrame(const GpuFenceValues& submitted){for(auto& e:ent
 void GpuManagedMemory::Pin(ID3D12Resource* resource){for(auto& e:entries_)if(e.resource.Get()==resource){if(e.retired)Fail("Pass references retired managed resource");auto lease=e.lease.lock();if(!lease)Fail("Pass references expired managed resource lease");framePins_.push_back(std::move(lease));if(e.residency!=Invalid)residency_->Require(e.residency);return;}}
 GpuMemoryBudget GpuManagedMemory::Budget()const{GpuMemoryBudget s;if(!residency_)return s;s.budget=residency_->Budget();s.usage=residency_->Used();s.headroom=policy_.Headroom();for(const auto& e:entries_)if(e.resource&&e.local&&residency_->Resident(e.residency))s.managedResidentBytes+=e.bytes;return s;}
 GpuResourceLease GpuManagedMemory::Create(const D3D12_RESOURCE_DESC& desc,D3D12_HEAP_TYPE heapType,uint32_t stride,bool srv,bool uav,const wchar_t* name){
-    if(!device_)Fail("Managed memory used before initialization");Collect(submitted_,completed_);bool local=heapType==D3D12_HEAP_TYPE_DEFAULT;auto minimum=MinimumResourceBytes(desc);if(local&&minimum>policy_.DomainBudget()){return {};}auto allocation=device_->GetResourceAllocationInfo(0,1,&desc);if(allocation.SizeInBytes==UINT64_MAX||!allocation.SizeInBytes)return {};
-    if(local){auto stats=Budget();policy_.Sample(stats.budget,stats.usage,stats.managedResidentBytes);if(!residency_->Reserve(allocation.SizeInBytes,completed_[2],policy_.Headroom())){return {};}residency_->RefreshBudget();stats=Budget();policy_.Sample(stats.budget,stats.usage,stats.managedResidentBytes);if(!policy_.CanAdmit(allocation.SizeInBytes)||allocation.SizeInBytes>GpuSubtract(policy_.DomainBudget(),stats.managedResidentBytes)){return {};}}
+    if(!device_)Fail("Managed memory used before initialization");
+    Collect(submitted_,completed_);
+    const bool local=heapType==D3D12_HEAP_TYPE_DEFAULT;
+    const auto allocation=device_->GetResourceAllocationInfo(0,1,&desc);
+    if(allocation.SizeInBytes==UINT64_MAX||!allocation.SizeInBytes)return {};
     D3D12_HEAP_PROPERTIES heap{};heap.Type=heapType;heap.CreationNodeMask=heap.VisibleNodeMask=1;ComPtr resource;auto state=heapType==D3D12_HEAP_TYPE_UPLOAD?D3D12_RESOURCE_STATE_GENERIC_READ:D3D12_RESOURCE_STATE_COMMON;HRESULT result=device_->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,state,nullptr,IID_PPV_ARGS(&resource));if(FAILED(result)){if(result!=E_OUTOFMEMORY)Hr(result,"managed GPU resource");return {};}if(name)resource->SetName(name);
     auto lease=std::make_shared<GpuManagedResource>();lease->resource=resource.Get();lease->desc=desc;lease->generation=++generation_;lease->allocationBytes=allocation.SizeInBytes;Entry e;e.resource=resource;e.lease=lease;e.bytes=allocation.SizeInBytes;e.local=local;if(local)e.residency=residency_->Add(resource.Get(),e.bytes,GpuResidencyClass::Required,true);bool buffer=desc.Dimension==D3D12_RESOURCE_DIMENSION_BUFFER;if(srv){lease->srv=buffer?services_->CreateBufferSrv(resource.Get(),uint32_t(desc.Width/stride),stride):services_->CreateTextureSrv(resource.Get(),desc.Format);e.views.push_back(lease->srv);}if(uav)for(uint32_t mip=0;mip<(buffer?1u:uint32_t(desc.MipLevels));++mip){auto view=buffer?services_->CreateBufferUav(resource.Get(),uint32_t(desc.Width/stride),stride):services_->CreateTextureUav(resource.Get(),desc.Format,mip);lease->uavs.push_back(view);e.views.push_back(view);}auto empty=std::find_if(entries_.begin(),entries_.end(),[](const Entry& entry){return !entry.resource;});if(empty==entries_.end())entries_.push_back(std::move(e));else *empty=std::move(e);return lease;
 }

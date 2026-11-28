@@ -199,6 +199,8 @@ public:
     const auto& GpuClusters()const{return gpuClusters_;}
     const auto& GpuStructural()const{return gpuStructural_;}
     bool RegistryMesh(uint32_t mesh,Mg2GpuRegistryEntry&)const;
+    // Camera-independent complete DAG cuts, in selection ABI order.
+    bool ForEachCanonicalCut(const std::function<bool(Mg2LodCut&&)>&)const;
     Mg2LodCut Select(std::span<const Mg2GpuRegistryEntry>,uint64_t scratchWords,float errorPixels,
         const Mg2GpuDispatch&,std::span<const uint32_t> previous,
         std::span<const Mg2InstanceRoute> previousRoutes,

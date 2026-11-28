@@ -3,6 +3,7 @@
 #include <cstring>
 #include <iterator>
 #include <utility>
+#include <wrl/client.h>
 namespace OASIS {
 void DiagnosticLine(const char*) noexcept;
 namespace {
@@ -64,6 +65,103 @@ void XR::Swapchains(){uint32_t n=0;Xr(xrEnumerateViewConfigurationViews(instance
     height_=CroppedExtent(height_,(std::tan(CropDown)+std::tan(CropUp))/
         (std::tan(.87909295f)+std::tan(.84459636f)));
     Xr(xrEnumerateSwapchainFormats(session_,0,&n,nullptr),"formats");std::vector<int64_t> f(n);Xr(xrEnumerateSwapchainFormats(session_,n,&n,f.data()),"formats");auto has=[&](DXGI_FORMAT a){return std::find(f.begin(),f.end(),int64_t(a))!=f.end();};format_=has(DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)?DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;if(!has(format_)||!has(DXGI_FORMAT_D32_FLOAT))Fail("sRGB + D32_FLOAT swapchains required");auto create=[&](XrSwapchain& sc,std::vector<XrSwapchainImageD3D12KHR>& out,DXGI_FORMAT format,XrSwapchainUsageFlags usage){XrSwapchainCreateInfo c{XR_TYPE_SWAPCHAIN_CREATE_INFO};c.usageFlags=usage;c.format=format;c.sampleCount=1;c.width=submitWidth_;c.height=submitHeight_;c.faceCount=1;c.arraySize=viewCount_;c.mipCount=1;Xr(xrCreateSwapchain(session_,&c,&sc),"swapchain array");uint32_t count=0;Xr(xrEnumerateSwapchainImages(sc,0,&count,nullptr),"swapchain images");out.resize(count,{XR_TYPE_SWAPCHAIN_IMAGE_D3D12_KHR});Xr(xrEnumerateSwapchainImages(sc,count,&count,reinterpret_cast<XrSwapchainImageBaseHeader*>(out.data())),"swapchain images");};create(color_,colors_,format_,XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT|XR_SWAPCHAIN_USAGE_TRANSFER_SRC_BIT);create(depth_,depths_,DXGI_FORMAT_D32_FLOAT,XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);}
+void XR::InitializeLoading(ID3D12Device* device,ID3D12CommandQueue* queue){
+    // One small static image with seven real milestone states. Re-submit
+    // quad metadata throughout loading without touching busy scene queues.
+    using Microsoft::WRL::ComPtr;
+    constexpr LONG W=512,H=128,Stages=7;
+    XrSwapchainCreateInfo c{XR_TYPE_SWAPCHAIN_CREATE_INFO};
+    c.createFlags=XR_SWAPCHAIN_CREATE_STATIC_IMAGE_BIT;
+    c.usageFlags=XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
+    c.format=format_;c.sampleCount=1;c.width=W;c.height=H*Stages;
+    c.faceCount=c.arraySize=c.mipCount=1;
+    Xr(xrCreateSwapchain(session_,&c,&loading_),"LOD24 loading swapchain");
+    uint32_t count=0;Xr(xrEnumerateSwapchainImages(loading_,0,&count,nullptr),"loading images");
+    std::vector<XrSwapchainImageD3D12KHR> images(count,{XR_TYPE_SWAPCHAIN_IMAGE_D3D12_KHR});
+    Xr(xrEnumerateSwapchainImages(loading_,count,&count,reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data())),"loading images");
+    uint32_t index=0;XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
+    Xr(xrAcquireSwapchainImage(loading_,&acquire,&index),"loading acquire");
+    XrSwapchainImageWaitInfo wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};wait.timeout=XR_INFINITE_DURATION;
+    Xr(xrWaitSwapchainImage(loading_,&wait),"loading wait");
+    auto* image=images.at(index).texture;
+    ComPtr<ID3D12DescriptorHeap> heap;D3D12_DESCRIPTOR_HEAP_DESC hd{};
+    hd.Type=D3D12_DESCRIPTOR_HEAP_TYPE_RTV;hd.NumDescriptors=1;
+    Hr(device->CreateDescriptorHeap(&hd,IID_PPV_ARGS(&heap)),"loading RTV heap");
+    auto rtv=heap->GetCPUDescriptorHandleForHeapStart();D3D12_RENDER_TARGET_VIEW_DESC rd{};
+    rd.Format=format_;rd.ViewDimension=D3D12_RTV_DIMENSION_TEXTURE2D;
+    device->CreateRenderTargetView(image,&rd,rtv);
+    ComPtr<ID3D12CommandAllocator> allocator;ComPtr<ID3D12GraphicsCommandList> list;
+    Hr(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,IID_PPV_ARGS(&allocator)),"loading allocator");
+    Hr(device->CreateCommandList(0,D3D12_COMMAND_LIST_TYPE_DIRECT,allocator.Get(),nullptr,IID_PPV_ARGS(&list)),"loading list");
+    D3D12_RESOURCE_BARRIER barrier{};barrier.Type=D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Transition={image,D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,D3D12_RESOURCE_STATE_COMMON,D3D12_RESOURCE_STATE_RENDER_TARGET};
+    list->ResourceBarrier(1,&barrier);
+    const float background[]{.008f,.018f,.025f,1.f},ink[]{.16f,.8f,.72f,1.f},track[]{.035f,.10f,.12f,1.f};
+    list->ClearRenderTargetView(rtv,background,0,nullptr);
+    constexpr uint8_t glyphs[5][7]={{14,17,17,17,17,17,14},{14,17,17,31,17,17,17},
+        {15,16,16,14,1,1,30},{31,4,4,4,4,4,31},{15,16,16,14,1,1,30}};
+    for(LONG stage=0;stage<Stages;++stage){
+        const LONG y=stage*H;
+        for(LONG letter=0;letter<5;++letter)for(LONG row=0;row<7;++row)for(LONG col=0;col<5;++col)
+            if(glyphs[letter][row]&(1u<<(4-col))){
+                D3D12_RECT rect{154+letter*42+col*6,y+24+row*6,160+letter*42+col*6,y+30+row*6};
+                list->ClearRenderTargetView(rtv,ink,1,&rect);
+            }
+        D3D12_RECT base{56,y+91,456,y+100};list->ClearRenderTargetView(rtv,track,1,&base);
+        if(stage){D3D12_RECT filled{56,y+91,56+400*stage/(Stages-1),y+100};
+            list->ClearRenderTargetView(rtv,ink,1,&filled);}
+    }
+    std::swap(barrier.Transition.StateBefore,barrier.Transition.StateAfter);
+    list->ResourceBarrier(1,&barrier);Hr(list->Close(),"loading close");
+    ID3D12CommandList* lists[]{list.Get()};queue->ExecuteCommandLists(1,lists);
+    ComPtr<ID3D12Fence> fence;Hr(device->CreateFence(0,D3D12_FENCE_FLAG_NONE,IID_PPV_ARGS(&fence)),"loading fence");
+    Hr(queue->Signal(fence.Get(),1),"loading signal");
+    HANDLE event=CreateEventW(nullptr,FALSE,FALSE,nullptr);if(!event)Fail("loading fence event");
+    const auto hr=fence->SetEventOnCompletion(1,event);
+    if(FAILED(hr)){CloseHandle(event);Hr(hr,"loading fence completion");}
+    const auto waited=WaitForSingleObject(event,INFINITE);CloseHandle(event);
+    if(waited!=WAIT_OBJECT_0)Fail("loading GPU wait");
+    Hr(device->GetDeviceRemovedReason(),"loading device");
+    XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+    Xr(xrReleaseSwapchainImage(loading_,&release),"loading release");
+    loadingActive_=true;
+}
+XrCompositionLayerQuad XR::LoadingLayer()const{
+    XrCompositionLayerQuad layer{XR_TYPE_COMPOSITION_LAYER_QUAD};
+    layer.space=viewSpace_;layer.eyeVisibility=XR_EYE_VISIBILITY_BOTH;
+    layer.subImage={loading_,{{0,int32_t(std::min(loadingStage_,6u)*128u)},{512,128}},0};
+    layer.pose.orientation.w=1.f;layer.pose.position.z=-1.4f;
+    layer.size={1.0f,.25f};
+    return layer;
+}
+bool XR::PresentLoading(uint32_t stage,XRFrame* sample){
+    if(!running_||!loading_)return false;
+    loadingStage_=stage;
+    XrTime time{};bool render=false;
+    if(sample){
+        if(!BeginFrame(*sample,nullptr,false))return false;
+        if(sample->render)LocateLate(*sample);
+        time=sample->displayTime;render=sample->render;
+    }else{
+        XrFrameWaitInfo wait{XR_TYPE_FRAME_WAIT_INFO};XrFrameState state{XR_TYPE_FRAME_STATE};
+        Xr(xrWaitFrame(session_,&wait,&state),"loading xrWaitFrame");
+        XrFrameBeginInfo begin{XR_TYPE_FRAME_BEGIN_INFO};
+        Xr(xrBeginFrame(session_,&begin),"loading xrBeginFrame");
+        time=state.predictedDisplayTime;render=state.shouldRender;
+    }
+    const auto layer=LoadingLayer();
+    const XrCompositionLayerBaseHeader* layers[]{reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer)};
+    XrFrameEndInfo end{XR_TYPE_FRAME_END_INFO};end.displayTime=time;
+    end.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+    end.layerCount=render?1u:0u;end.layers=render?layers:nullptr;
+    Xr(xrEndFrame(session_,&end),"loading xrEndFrame");
+    if(++loadingFrames_%72u==1u){
+        char line[128];std::snprintf(line,sizeof(line),"lod24_xr_loading frames=%llu stage=%u rendered=%u\r\n",
+            (unsigned long long)loadingFrames_,stage,unsigned(render));DiagnosticLine(line);
+    }
+    return true;
+}
+
 void XR::PollEvents(){XrEventDataBuffer e{XR_TYPE_EVENT_DATA_BUFFER};while(xrPollEvent(instance_,&e)==XR_SUCCESS){if(e.type==XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED){state_=reinterpret_cast<XrEventDataSessionStateChanged*>(&e)->state;if(state_==XR_SESSION_STATE_READY){lastPresented_.valid=false;missedStreak_=0;XrSessionBeginInfo b{XR_TYPE_SESSION_BEGIN_INFO};b.primaryViewConfigurationType=viewConfigurationType_;Xr(xrBeginSession(session_,&b),"begin session");running_=true;UpdateInteractionProfiles();if(refresh_)refresh_(session_,RequestedHeadsetHz);
         headsetTargetHz_=RequestedHeadsetHz;
         float activeHz{};
@@ -250,7 +348,12 @@ void XR::EndFrame(const XRFrame& f){
     }
     XrFrameEndInfo e{XR_TYPE_FRAME_END_INFO};
     e.displayTime=f.displayTime;e.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
-    e.layerCount=fresh||reuse?1u:0u;e.layers=e.layerCount?layers:nullptr;
+    const bool loading=f.render&&!fresh&&!reuse&&loadingActive_&&loading_;
+    const auto loadingLayer=LoadingLayer();
+    const XrCompositionLayerBaseHeader* loadingLayers[]{reinterpret_cast<const XrCompositionLayerBaseHeader*>(&loadingLayer)};
+    if(fresh)loadingActive_=false;
+    e.layerCount=fresh||reuse||loading?1u:0u;
+    e.layers=loading?loadingLayers:(e.layerCount?layers:nullptr);
     const auto beforeEnd=QpcCounter();
     Xr(xrEndFrame(session_,&e),"xrEndFrame");
     if(fresh){
@@ -301,5 +404,5 @@ XrResult XR::Haptic(const HapticEvent& event){
     vibration.duration=XrDuration(event.duration*1e9);
     return xrApplyHapticFeedback(session_,&action,reinterpret_cast<XrHapticBaseHeader*>(&vibration));
 }
-XR::~XR(){if(color_)xrDestroySwapchain(color_);if(depth_)xrDestroySwapchain(depth_);for(auto& action:poseSpaces_)for(auto space:action)if(space)xrDestroySpace(space);if(viewSpace_)xrDestroySpace(viewSpace_);if(space_)xrDestroySpace(space_);if(session_)xrDestroySession(session_);if(physicalActionsSet_)xrDestroyActionSet(physicalActionsSet_);if(instance_)xrDestroyInstance(instance_);}
+XR::~XR(){if(loading_)xrDestroySwapchain(loading_);if(color_)xrDestroySwapchain(color_);if(depth_)xrDestroySwapchain(depth_);for(auto& action:poseSpaces_)for(auto space:action)if(space)xrDestroySpace(space);if(viewSpace_)xrDestroySpace(viewSpace_);if(space_)xrDestroySpace(space_);if(session_)xrDestroySession(session_);if(physicalActionsSet_)xrDestroyActionSet(physicalActionsSet_);if(instance_)xrDestroyInstance(instance_);}
 }

@@ -1074,6 +1074,80 @@ bool Mg2Pages::RegistryMesh(uint32_t mesh,Mg2GpuRegistryEntry& entry)const{
     entry.nodeRoot=source.nodeRoot;entry.nodeEnd=source.nodeEnd;
     return true;
 }
+bool Mg2Pages::ForEachCanonicalCut(const std::function<bool(Mg2LodCut&&)>& emit)const{
+    std::vector<uint32_t> meshes;
+    meshes.reserve(pagesByMesh_.size());
+    for(const auto& [mesh,groups]:pagesByMesh_)
+        if(!retiredMeshes_.contains(mesh)&&!groups.empty())meshes.push_back(mesh);
+    std::sort(meshes.begin(),meshes.end());
+    for(const auto mesh:meshes){
+        const auto& groups=pagesByMesh_.at(mesh);
+        // Activate a group only after all of its predecessors.
+        std::unordered_map<size_t,uint32_t> depth,parents;
+        for(const auto p:groups){depth.emplace(p,0);parents.emplace(p,0);}
+        for(const auto p:groups)for(const auto& c:pages_.at(p)->clusters)
+            if(c.refined>=0)++parents.at(size_t(c.refined));
+        std::vector<size_t> queue;
+        for(const auto p:groups)if(!parents.at(p))queue.push_back(p);
+        uint32_t maxDepth=0;
+        for(size_t at=0;at<queue.size();++at){
+            const auto p=queue[at];
+            for(const auto& c:pages_.at(p)->clusters)if(c.refined>=0){
+                const auto child=size_t(c.refined);
+                auto& d=depth.at(child);d=std::max(d,depth.at(p)+1u);
+                maxDepth=std::max(maxDepth,d);
+                if(!--parents.at(child))queue.push_back(child);
+            }
+        }
+        if(queue.size()!=groups.size())Fail("LOD24 cyclic MG2 hierarchy");
+        std::set<std::vector<uint32_t>> seen;
+        using Ref=std::pair<size_t,size_t>;
+        const auto output=[&](const std::vector<Ref>& refs){
+            if(refs.empty())return true;
+            if(refs.size()>UINT32_MAX)Fail("LOD24 canonical cut ABI");
+            std::vector<uint32_t> ids;ids.reserve(refs.size());
+            for(const auto& [p,c]:refs)ids.push_back(pages_.at(p)->clusters.at(c).id);
+            if(!seen.insert(ids).second)return true;
+            Mg2LodCut cut;cut.pages=1;cut.variants=1;
+            cut.candidates=cut.eligible=cut.selectedRoutes=1;
+            // Synthetic route only for the unpublished warmup.
+            cut.routes.push_back({0u,0u,mesh,0u});
+            cut.selection.push_back(uint32_t(ids.size()));
+            cut.selection.insert(cut.selection.end(),ids.begin(),ids.end());
+            for(const auto& [p,c]:refs){
+                const auto& page=*pages_.at(p);const auto& cluster=page.clusters.at(c);
+                if(cut.vertices.size()>UINT32_MAX-cluster.vertexCount||
+                   cut.indices.size()>UINT32_MAX-cluster.indices.size())Fail("LOD24 canonical geometry ABI");
+                const auto vertex=uint32_t(cut.vertices.size()),index=uint32_t(cut.indices.size());
+                cut.vertices.insert(cut.vertices.end(),cluster.vertices.begin(),cluster.vertices.end());
+                cut.indices.insert(cut.indices.end(),cluster.indices.begin(),cluster.indices.end());
+                cut.clusters.push_back({uint32_t(cut.clusters.size()),vertex,cluster.vertexCount,index,
+                    uint32_t(cluster.indices.size()),page.material,page.mesh,0u,page.opaque,
+                    cluster.sourceFirstVertex,cluster.sourceFirstIndex});
+            }
+            return emit(std::move(cut));
+        };
+        for(uint32_t level=0;level<=maxDepth;++level){
+            std::vector<Ref> refs;
+            for(const auto p:groups)if(depth.at(p)<=level){
+                const auto& page=*pages_.at(p);
+                for(size_t c=0;c<page.clusters.size();++c){
+                    const auto child=page.clusters[c].refined;
+                    if(child<0||depth.at(size_t(child))>level)refs.emplace_back(p,c);
+                }
+            }
+            if(!output(refs))return false;
+        }
+        if(const auto it=structuralPages_.find(mesh);it!=structuralPages_.end())
+            for(const auto p:it->second){
+                std::vector<Ref> refs;
+                for(size_t c=0;c<pages_.at(p)->clusters.size();++c)refs.emplace_back(p,c);
+                if(!output(refs))return false;
+            }
+    }
+    return true;
+}
+
 Mg2LodCut Mg2Pages::Select(std::span<const Mg2GpuRegistryEntry> requests,uint64_t scratchWords,float errorPixels,
     const Mg2GpuDispatch& dispatch,std::span<const uint32_t> previous,std::span<const Mg2InstanceRoute> previousRoutes,
     std::span<const Mg2InstanceRoute> frozenRoutes)const{

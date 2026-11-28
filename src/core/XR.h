@@ -87,6 +87,8 @@ class XR {
     std::array<XrAction,MaxPhysicalControls> physicalActions_{};
     std::array<XrPath,HandCount> hands_{};std::array<std::array<XrSpace,HandCount>,MaxPhysicalControls> poseSpaces_{};
     std::vector<SuggestedProfile> suggestedProfiles_;
+    XrSwapchain loading_{}; // Static, independent loading atlas.
+    uint64_t loadingFrames_{};uint32_t loadingStage_{};bool loadingActive_{};
     XrSwapchain color_{},depth_{};std::vector<XrSwapchainImageD3D12KHR> colors_,depths_;
     // A20: retain only compositor metadata, never copy or relabel old pixels.
     struct PresentedLayer {
@@ -113,6 +115,9 @@ class XR {
 public:
     ~XR();void InitializeInstance(XRIdentity,InputSystem&,TrackingMapping={});void InitializeSession(ID3D12Device*,ID3D12CommandQueue*);void PollEvents();void RequestExit();
     bool BeginFrame(XRFrame&,double* waitMilliseconds=nullptr,bool pollControllers=true);
+    void InitializeLoading(ID3D12Device*,ID3D12CommandQueue*);
+    bool PresentLoading(uint32_t stage,XRFrame* sample=nullptr);
+    XrCompositionLayerQuad LoadingLayer()const;
     void LocateLate(XRFrame&,const XRCaptureView* capture=nullptr);
     bool AcquireSwapchains(XRFrame&);void EndFrame(const XRFrame&);XrResult Haptic(const HapticEvent&);
     bool Running()const{return running_;}bool ExitRequested()const{return exit_;}
