@@ -1270,6 +1270,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::map<std::array<uint32_t,6>,uint32_t> indices;
         ComPtr<ID3D12Resource> nativeArray,nvapiArray;
         uint32_t Index(const Vertex& a,const Vertex& b,const Vertex& c) const;
+        bool TryIndex(const Vertex& a,const Vertex& b,const Vertex& c,uint32_t& index) const;
     };
     std::vector<FoliageOmm> foliageOmms;
     const FoliageOmm* FindFoliageOmm(uint32_t mesh) const;

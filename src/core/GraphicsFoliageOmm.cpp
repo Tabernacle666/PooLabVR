@@ -51,6 +51,13 @@ void AsBarrier(ID3D12GraphicsCommandList7* list,ID3D12Resource* resource){
         D3D12_BARRIER_ACCESS_RAYTRACING_ACCELERATION_STRUCTURE_READ);
 }
 }
+bool Graphics::Impl::FoliageOmm::TryIndex(const Vertex& a,const Vertex& b,const Vertex& c,uint32_t& index)const{
+    index=UnknownOmm;
+    if(!ValidBakeUv(a.uv,b.uv,c.uv))return false;
+    const auto found=indices.find(TriangleKey(a.uv,b.uv,c.uv));
+    if(found==indices.end())return false;
+    index=found->second;return true;
+}
 uint32_t Graphics::Impl::FoliageOmm::Index(const Vertex& a,const Vertex& b,const Vertex& c)const{
     if(!ValidBakeUv(a.uv,b.uv,c.uv))return UnknownOmm;
     const auto it=indices.find(TriangleKey(a.uv,b.uv,c.uv));

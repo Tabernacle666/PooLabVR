@@ -1324,10 +1324,8 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
                         valid=false;break;
                     }
                     const auto& surface=surfaceData[draw->instance.material];
-                    // Authored patches currently carry UV0 only. Do not
-                    // replace a source whose material actually needs UV1.
-                    if(surface.extra.y>1u||std::ranges::any_of(surface.mapping,
-                       [](const auto& mapping){return mapping.rotationSet.z>.5f;})){
+                    // Authored patches now retain both UV sets and normals.
+                    if(surface.extra.y>1u){
                         valid=false;break;
                     }
                     materials.insert(draw->instance.material);
@@ -3026,25 +3024,54 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
             output.newClasKeys=std::move(prepared.newClasKeys);
             std::vector<uint32_t> ommIndices;
             std::vector<UINT64> ommOffsets(prepared.newClusters.size(),UINT64_MAX);
+            std::vector<const FoliageOmm*> clusterOmms(prepared.newClusters.size(),nullptr);
+            uint64_t territorialKnown=0,territorialUnknown=0;
             for(size_t i=0;i<prepared.newClusters.size();++i){
                 const auto& cluster=prepared.newClusters[i];
                 const auto* omm=FindFoliageOmm(cluster.mesh);
-                if(!omm)continue;
-                if(cluster.opaque||omm->material!=cluster.material||
+                const bool territorial=cluster.mesh>=meshes.ranges.size();
+                if(!omm&&(!territorial||cluster.opaque))continue;
+                if(cluster.opaque||(omm&&omm->material!=cluster.material)||
                    uint64_t(cluster.firstIndex)+cluster.indexCount>cut.indices.size()||
                    uint64_t(cluster.firstVertex)+cluster.vertexCount>cut.vertices.size()||
                    cluster.indexCount%3u)return fail("omm_identite_clas");
+                for(uint32_t p=0;p<cluster.indexCount;++p)
+                    if(cut.indices[cluster.firstIndex+p]>=cluster.vertexCount)return fail("omm_indices_clas");
+                const auto vertex=[&](uint32_t p)->const Vertex&{
+                    return cut.vertices[cluster.firstVertex+cut.indices[cluster.firstIndex+p]];
+                };
+                if(territorial&&!omm){
+                    // One existing array per cluster. Exact ordered UV key
+                    // and immutable material are required; unknown UVs use
+                    // the hardware four-state unknown index, not a fake map.
+                    uint32_t best=0;
+                    for(const auto& candidate:foliageOmms){
+                        if(candidate.material!=cluster.material)continue;
+                        uint32_t known=0;
+                        for(uint32_t p=0;p<cluster.indexCount;p+=3){
+                            uint32_t index;
+                            known+=candidate.TryIndex(vertex(p),vertex(p+1),vertex(p+2),index);
+                        }
+                        if(known>best){best=known;omm=&candidate;}
+                    }
+                    if(!omm)continue; // ordinary non-opaque triangles
+                }
+                clusterOmms[i]=omm;
                 ommOffsets[i]=UINT64(ommIndices.size())*sizeof(uint32_t);
                 for(uint32_t p=0;p<cluster.indexCount;p+=3){
-                    const auto index=cluster.firstIndex+p;
-                    const auto a=cut.indices[index],b=cut.indices[index+1],c=cut.indices[index+2];
-                    if(a>=cluster.vertexCount||b>=cluster.vertexCount||c>=cluster.vertexCount)
-                        return fail("omm_indices_clas");
-                    ommIndices.push_back(omm->Index(cut.vertices[cluster.firstVertex+a],
-                        cut.vertices[cluster.firstVertex+b],cut.vertices[cluster.firstVertex+c]));
+                    if(territorial){
+                        uint32_t index;
+                        const bool known=omm->TryIndex(vertex(p),vertex(p+1),vertex(p+2),index);
+                        territorialKnown+=known;territorialUnknown+=!known;
+                        ommIndices.push_back(index);
+                    }else ommIndices.push_back(omm->Index(vertex(p),vertex(p+1),vertex(p+2)));
                 }
                 ++work.result.ommClasClusters;
                 work.result.ommClasTriangles+=cluster.indexCount/3u;
+            }
+            if(territorialKnown||territorialUnknown){
+                char line[192];std::snprintf(line,sizeof(line),"lod23_omm reused_triangles=%llu unknown_triangles=%llu\r\n",
+                    static_cast<unsigned long long>(territorialKnown),static_cast<unsigned long long>(territorialUnknown));DiagnosticLine(line);
             }
             ComPtr<ID3D12Resource> ommIndexBuffer;
             if(!ommIndices.empty()){
@@ -3062,7 +3089,7 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
                     sourceAddress(ForestSourceStream::Indices,UINT64(cluster.sourceFirstIndex)*sizeof(uint32_t),
                         UINT64(cluster.indexCount)*sizeof(uint32_t)));
                 if(ommOffsets[i]!=UINT64_MAX){
-                    const auto& omm=*FindFoliageOmm(cluster.mesh);
+                    const auto& omm=*clusterOmms[i];
                     Api::AttachOmm(args,omm.nativeArray->GetGPUVirtualAddress(),
                         omm.nvapiArray?omm.nvapiArray->GetGPUVirtualAddress():0u,
                         ommIndexBuffer->GetGPUVirtualAddress()+ommOffsets[i]);

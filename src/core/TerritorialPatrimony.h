@@ -38,22 +38,34 @@ public:
     struct Patch {
         XMFLOAT3 center{},u{},v{}; // representative offsets from centroid; third is -u-v
         XMFLOAT3 lo{},hi{},projected{},color{};
-        std::array<XMFLOAT2,3> uv{};
+        std::array<XMFLOAT2,3> uv{},uv1{};
+        std::array<XMFLOAT3,3> normals{};
+        XMFLOAT3 normalMoment{},repColor{};
+        float normalDeviation{},samplingUncertainty{};
         float area{},covered{},repArea{},repAlpha{},priority{},fit{},sourceError{};
         uint32_t material{},kind{},twoSided{};
         std::array<Vertex,3> Triangle()const{
             const auto a=Add(center,Scale(u,fit)),b=Add(center,Scale(v,fit));
             const auto c=Sub(center,Scale(Add(u,v),fit));
-            const auto n=Normal(u,v);
-            return {{{a,n,uv[0],{}},{b,n,uv[1],{}},{c,n,uv[2],{}}}};
+            return {{{a,normals[0],uv[0],uv1[0]},{b,normals[1],uv[1],uv1[1]},{c,normals[2],uv[2],uv1[2]}}};
         }
         double ProxyCovered()const{return double(repArea)*fit*fit*repAlpha;}
         float GeometricError()const{return Length(Sub(hi,lo))+sourceError;}
+        // Each moment is a sum of oriented, alpha-weighted area vectors.
+        // The deviation bounds the difference between its projection and
+        // the sum of constituent projections for any unit view direction.
+        static float ViewArea(XMFLOAT3 moment,XMFLOAT3 direction,bool twoSided){
+            const float d=moment.x*direction.x+moment.y*direction.y+moment.z*direction.z;
+            return twoSided?std::abs(d):std::max(0.f,d);
+        }
         float OpticalError()const{
-            const auto n=Normal(u,v);
-            const auto a=float(ProxyCovered());
-            return std::sqrt(std::max({std::abs(projected.x-a*std::abs(n.x)),
-                std::abs(projected.y-a*std::abs(n.y)),std::abs(projected.z-a*std::abs(n.z))}));
+            const float a=float(ProxyCovered());
+            const auto proxy=Scale(Normal(u,v),a);
+            const float difference=twoSided?std::min(Length(Sub(normalMoment,proxy)),Length(Add(normalMoment,proxy))):
+                Length(Sub(normalMoment,proxy));
+            const float energy=Length(Sub(Scale(color,covered),Scale(repColor,a)));
+            return std::sqrt(std::max({difference+normalDeviation+samplingUncertainty,
+                std::abs(covered-a),energy}));
         }
     };
     struct Node {
@@ -149,11 +161,14 @@ private:
     static Key Leaf(XMFLOAT3 p){return {Floor(p.x,TerritorialTileMeters),Floor(p.z,TerritorialTileMeters),0};}
     static Key Parent(Key k){++k.level;const auto side=Side(k.level);k.x=Align(k.x,side);k.z=Align(k.z,side);return k;}
     static uint32_t Orientation(const Patch& p){
-        const auto n=Normal(p.u,p.v);
+        auto n=Normal(p.u,p.v);
         const auto a=Directional(n,1.f);
         const unsigned axis=a.x>=a.y&&a.x>=a.z?0u:a.y>=a.z?1u:2u;
         const float sign=axis==0?n.x:axis==1?n.y:n.z;
-        return axis*2u+uint32_t(!p.twoSided&&sign<0.f);
+        if(p.twoSided&&sign<0.f)n=Scale(n,-1.f);
+        // Retain slope and azimuth within the dominant-axis bin.
+        const auto quant=[](float x){return x<-.35f?0u:x>.35f?2u:1u;};
+        return axis*27u+quant(n.x)*9u+quant(n.y)*3u+quant(n.z);
     }
     static Bin At(const Patch& p,double spacing){
         return {Floor(p.center.x,spacing),Floor(p.center.y,spacing),Floor(p.center.z,spacing),
@@ -162,7 +177,8 @@ private:
     static void Fit(Patch& p){
         // Fit area into actual spatial support; excess density is retained
         // as metadata and measured error, never silently reported as conserved.
-        float factor=std::sqrt(p.area/p.repArea);
+        const float desired=p.repAlpha>1.e-6f&&p.covered>0.f?p.covered/p.repAlpha:p.area;
+        float factor=std::sqrt(desired/p.repArea);
         const std::array<XMFLOAT3,3> offsets{p.u,p.v,Scale(Add(p.u,p.v),-1.f)};
         for(const auto d:offsets){
             const auto cap=[&](float c,float off,float lo,float hi){
@@ -182,9 +198,20 @@ private:
         if(covered>0.f)a.color=Add(a.color,Scale(Sub(b.color,a.color),b.covered/covered));
         a.lo=Min(a.lo,b.lo);a.hi=Max(a.hi,b.hi);
         a.projected=Add(a.projected,b.projected);
+        // Sign alignment is legal for two-sided alpha cards only.
+        auto bm=b.normalMoment;
+        const float dot=a.normalMoment.x*bm.x+a.normalMoment.y*bm.y+a.normalMoment.z*bm.z;
+        if(a.twoSided&&dot<0.f)bm=Scale(bm,-1.f);
+        if(a.covered>0.f&&b.covered>0.f){
+            const auto delta=Sub(Scale(a.normalMoment,1.f/a.covered),Scale(bm,1.f/b.covered));
+            a.normalDeviation+=b.normalDeviation+
+                float(2.0*double(a.covered)*b.covered/covered)*Length(delta);
+        }else a.normalDeviation+=b.normalDeviation;
+        a.normalMoment=Add(a.normalMoment,bm);
+        a.samplingUncertainty+=b.samplingUncertainty;
         a.area=area;a.covered=covered;a.sourceError=std::max(a.sourceError,b.sourceError);
         if(b.priority>a.priority){
-            a.u=b.u;a.v=b.v;a.uv=b.uv;a.repArea=b.repArea;
+            a.u=b.u;a.v=b.v;a.uv=b.uv;a.uv1=b.uv1;a.normals=b.normals;a.repColor=b.repColor;a.repArea=b.repArea;
             a.repAlpha=b.repAlpha;a.priority=b.priority;
         }
     }
@@ -225,9 +252,29 @@ private:
             };
             // Do not trade a lost vertical or grazing-angle contribution
             // against a larger horizontal surface in another direction.
-            if(noWorse(c.x,fineProjected.x,target.x)&&noWorse(c.y,fineProjected.y,target.y)&&
-                noWorse(c.z,fineProjected.z,target.z))
-                result.push_back(std::move(coarse));
+            bool accept=noWorse(c.x,fineProjected.x,target.x)&&noWorse(c.y,fineProjected.y,target.y)&&
+                noWorse(c.z,fineProjected.z,target.z);
+            // Check all 26 axis/edge/corner directions, not only three axes.
+            // Compare against the sum of children's moment projections;
+            // uncertainty is preserved separately in OpticalError.
+            for(int z=-1;z<=1&&accept;++z)for(int y=-1;y<=1&&accept;++y)for(int x=-1;x<=1&&accept;++x){
+                if(!x&&!y&&!z)continue;
+                const XMFLOAT3 direction{float(x),float(y),float(z)};
+                float reference=0.f,separate=0.f;
+                for(const auto& part:parts){
+                    reference+=Patch::ViewArea(part.normalMoment,direction,part.twoSided!=0u);
+                    separate+=Patch::ViewArea(Scale(Normal(part.u,part.v),float(part.ProxyCovered())),
+                        direction,part.twoSided!=0u);
+                }
+                const float combined=Patch::ViewArea(Scale(Normal(coarse.u,coarse.v),float(coarse.ProxyCovered())),
+                    direction,coarse.twoSided!=0u);
+                accept=noWorse(combined,separate,reference);
+            }
+            double separateError=0.;
+            for(const auto& part:parts){const double e=part.OpticalError();separateError+=e*e;}
+            const double coarseError=coarse.OpticalError();
+            accept&=coarseError*coarseError<=separateError+16.*std::numeric_limits<float>::epsilon()*std::max(1.,separateError);
+            if(accept)result.push_back(std::move(coarse));
             else for(auto& part:parts)result.push_back(std::move(part));
         }
         return result;
@@ -235,7 +282,13 @@ private:
     static void Finish(Builder& b){b.node.patches=FinishBins(b.bins);}
     static bool Valid(const Patch& p){
         return Finite(p.center)&&Finite(p.lo)&&Finite(p.hi)&&Finite(p.u)&&Finite(p.v)&&
-            Finite(p.projected)&&Finite(p.color)&&p.lo.x<=p.hi.x&&p.lo.y<=p.hi.y&&p.lo.z<=p.hi.z&&
+            Finite(p.projected)&&Finite(p.color)&&Finite(p.repColor)&&Finite(p.normalMoment)&&
+            std::isfinite(p.normalDeviation)&&p.normalDeviation>=0.f&&
+            std::isfinite(p.samplingUncertainty)&&p.samplingUncertainty>=0.f&&
+            std::all_of(p.normals.begin(),p.normals.end(),Finite)&&
+            std::all_of(p.uv.begin(),p.uv.end(),[](auto uv){return std::isfinite(uv.x)&&std::isfinite(uv.y);})&&
+            std::all_of(p.uv1.begin(),p.uv1.end(),[](auto uv){return std::isfinite(uv.x)&&std::isfinite(uv.y);})&&
+            p.lo.x<=p.hi.x&&p.lo.y<=p.hi.y&&p.lo.z<=p.hi.z&&
             std::isfinite(p.area)&&p.area>0.f&&std::isfinite(p.repArea)&&p.repArea>0.f&&
             std::isfinite(p.covered)&&p.covered>=0.f&&p.covered<=p.area*1.0001f&&
             std::isfinite(p.fit)&&p.fit>0.f&&std::isfinite(p.sourceError)&&p.sourceError>=0.f&&
@@ -259,6 +312,7 @@ private:
         if(m.albedo<scene.textures.size()){
             const auto& t=scene.textures[m.albedo];
             HashValue(h,t.width);HashValue(h,t.height);HashValue(h,t.format);
+            h.Add(t.offsets.data(),t.offsets.size()*sizeof(uint64_t));
             h.Add(t.bytes.data(),t.bytes.size());
         }
         auto sig=Digest(h);materials_.emplace(id,sig);return sig;
@@ -276,36 +330,53 @@ private:
         if(tex.format==DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)return {table[byte(0)],table[byte(1)],table[byte(2)]};
         return {byte(0)/255.f,byte(1)/255.f,byte(2)/255.f};
     }
-    struct Optical {XMFLOAT3 color{};float alpha{};};
-    static Optical Sample(const SceneData& scene,uint32_t material,const std::array<XMFLOAT2,3>& uv){
+    struct Optical {XMFLOAT3 color{};float alpha{},uncertainty{};};
+    static Optical Sample(const SceneData& scene,uint32_t material,const std::array<XMFLOAT2,3>& uv,
+                          const std::array<XMFLOAT2,3>& uv1){
         const auto& m=scene.materials.at(material);
         const XMFLOAT3 base{m.colorRoughness.x,m.colorRoughness.y,m.colorRoughness.z};
         const TextureData* t=m.albedo<scene.textures.size()?&scene.textures[m.albedo]:nullptr;
-        const bool rgba=t&&t->width&&t->height&&
+        const uint64_t offset=t&&!t->offsets.empty()?t->offsets[0]:0u;
+        const bool rgba=t&&t->width&&t->height&&offset<=t->bytes.size()&&
             (t->format==DXGI_FORMAT_R8G8B8A8_UNORM_SRGB||t->format==DXGI_FORMAT_R8G8B8A8_UNORM)&&
-            uint64_t(t->width)*t->height<=t->bytes.size()/4u;
+            uint64_t(t->width)*t->height<=(t->bytes.size()-offset)/4u;
+        const auto& mapping=m.mapping[0];
+        const auto& selected=mapping.rotationSet.z>.5f?uv1:uv;
         const SamplerData sampler=m.samplers[0]<scene.samplers.size()?scene.samplers[m.samplers[0]]:SamplerData{};
         const auto coord=[](float u,uint32_t wrap,uint32_t size){
             if(wrap==33071u)u=std::clamp(u,0.f,1.f);
+            else if(wrap==33648u){u-=2.f*std::floor(u*.5f);u=1.f-std::abs(u-1.f);}
             else u-=std::floor(u);
             return std::min(size-1u,uint32_t(u*float(size)));
         };
-        static constexpr std::array<std::array<float,3>,4> weights{{
-            {{1.f/3,1.f/3,1.f/3}},{{.6f,.2f,.2f}},{{.2f,.6f,.2f}},{{.2f,.2f,.6f}}
-        }};
+        // Uniform triangular microcells: both halves of each lattice row.
+        // Approximate mip-zero coverage; report unsupported texture formats.
         Optical out{};
-        for(const auto& w:weights){
+        out.uncertainty=t&&!rgba?1.f:0.f;
+        const auto sample=[&](std::array<float,3> w){
             auto c=base;float alpha=m.alpha;
             if(rgba){
-                const float u=uv[0].x*w[0]+uv[1].x*w[1]+uv[2].x*w[2];
-                const float v=uv[0].y*w[0]+uv[1].y*w[1]+uv[2].y*w[2];
-                const auto x=coord(u,sampler.wrapS,t->width),y=coord(v,sampler.wrapT,t->height);
-                const auto i=4u*(size_t(y)*t->width+x);
+                const float u=(selected[0].x*w[0]+selected[1].x*w[1]+selected[2].x*w[2])*mapping.offsetScale.z;
+                const float v=(selected[0].y*w[0]+selected[1].y*w[1]+selected[2].y*w[2])*mapping.offsetScale.w;
+                const float mappedU=mapping.rotationSet.x*u-mapping.rotationSet.y*v+mapping.offsetScale.x;
+                const float mappedV=mapping.rotationSet.y*u+mapping.rotationSet.x*v+mapping.offsetScale.y;
+                if(!std::isfinite(mappedU)||!std::isfinite(mappedV)){out.uncertainty=1.f;return;}
+                const auto x=coord(mappedU,sampler.wrapS,t->width),y=coord(mappedV,sampler.wrapT,t->height);
+                const auto i=size_t(offset)+4u*(size_t(y)*t->width+x);
                 const auto rgb=LinearColor(*t,i);c={c.x*rgb.x,c.y*rgb.y,c.z*rgb.z};
                 alpha*=std::to_integer<unsigned char>(t->bytes[i+3])/255.f;
             }
             const float coverage=m.alphaMode==1u?float(alpha>=m.cutoff):1.f;
-            out.alpha+=coverage*.25f;out.color=Add(out.color,Scale(c,coverage*.25f));
+            out.alpha+=coverage/16.f;out.color=Add(out.color,Scale(c,coverage/16.f));
+        };
+        constexpr unsigned n=4;
+        for(unsigned y=0;y<n;++y)for(unsigned x=0;x+y<n;++x){
+            const float u=(float(x)+1.f/3.f)/n,v=(float(y)+1.f/3.f)/n;
+            sample({1.f-u-v,u,v});
+            if(x+y+1u<n){
+                const float u2=(float(x)+2.f/3.f)/n,v2=(float(y)+2.f/3.f)/n;
+                sample({1.f-u2-v2,u2,v2});
+            }
         }
         out.color=out.alpha>0.f?Scale(out.color,1.f/out.alpha):base;
         return out;
@@ -316,13 +387,17 @@ private:
     static std::array<Optical,2> FoliageOptics(const SceneData& scene,uint32_t material){
         const auto& m=scene.materials.at(material);
         const XMFLOAT3 base{m.colorRoughness.x,m.colorRoughness.y,m.colorRoughness.z};
-        std::array<Optical,2> result{{{base,1.f},{base,1.f}}};
+        const float constantCoverage=m.alphaMode==1u?float(m.alpha>=m.cutoff):1.f;
+        std::array<Optical,2> result{{{base,constantCoverage},{base,constantCoverage}}};
         if(m.albedo>=scene.textures.size())return result;
         const auto& t=scene.textures[m.albedo];
         const uint64_t texels=uint64_t(t.width)*t.height;
         if(!texels||t.offsets.empty()||t.offsets[0]>t.bytes.size()||
             texels>(t.bytes.size()-t.offsets[0])/4u||
-            (t.format!=DXGI_FORMAT_R8G8B8A8_UNORM_SRGB&&t.format!=DXGI_FORMAT_R8G8B8A8_UNORM))return result;
+            (t.format!=DXGI_FORMAT_R8G8B8A8_UNORM_SRGB&&t.format!=DXGI_FORMAT_R8G8B8A8_UNORM)){
+            for(auto& half:result)half.uncertainty=1.f;
+            return result;
+        }
         std::array<double,2> support{},passed{},red{},green{},blue{};
         for(uint32_t y=0;y<t.height;++y)for(uint32_t x=0;x<t.width;++x){
             const auto i=size_t(t.offsets[0])+4u*(size_t(y)*t.width+x);
@@ -364,13 +439,22 @@ private:
         p.center=Scale(Add(Add(a.position,b.position),c.position),1.f/3.f);
         p.u=Sub(a.position,p.center);p.v=Sub(b.position,p.center);
         p.lo=Min(a.position,Min(b.position,c.position));p.hi=Max(a.position,Max(b.position,c.position));
-        p.uv={a.uv,b.uv,c.uv};p.material=material;p.kind=kind;
+        p.uv={a.uv,b.uv,c.uv};p.uv1={a.uv1,b.uv1,c.uv1};
+        p.normals={a.normal,b.normal,c.normal};p.material=material;p.kind=kind;
         p.twoSided=scene.materials.at(material).doubleSided;
         p.area=p.repArea=Area(p.u,p.v);p.sourceError=sourceError;p.fit=1.f;
         if(!(p.area>1.e-14f))return p;
-        const int half=foliage?CanonicalAtlasHalf(p.uv):-1;
-        const auto optical=half>=0?(*foliage)[size_t(half)]:Sample(scene,material,p.uv);
-        p.repAlpha=optical.alpha;p.covered=p.area*optical.alpha;p.color=optical.color;
+        const auto& m=scene.materials.at(material);
+        const auto& map=m.mapping[0];
+        const auto sampler=m.samplers[0]<scene.samplers.size()?scene.samplers[m.samplers[0]]:SamplerData{};
+        const bool canonical=map.rotationSet.x==1.f&&map.rotationSet.y==0.f&&map.rotationSet.z==0.f&&
+            map.offsetScale.x==0.f&&map.offsetScale.y==0.f&&map.offsetScale.z==1.f&&map.offsetScale.w==1.f&&
+            sampler.wrapS==33071u&&sampler.wrapT==33071u;
+        const int half=foliage&&canonical?CanonicalAtlasHalf(p.uv):-1;
+        const auto optical=half>=0?(*foliage)[size_t(half)]:Sample(scene,material,p.uv,p.uv1);
+        p.repAlpha=optical.alpha;p.covered=p.area*optical.alpha;p.color=p.repColor=optical.color;
+        p.normalMoment=Scale(Normal(p.u,p.v),p.covered);
+        p.samplingUncertainty=p.area*optical.uncertainty;
         p.projected=Directional(Normal(p.u,p.v),p.covered);
         p.priority=p.covered+p.area*.001f;
         return p;
@@ -381,6 +465,20 @@ private:
         const auto dir=[&](XMFLOAT3 a){return TransformDirection({a.x*o.scale.x,a.y*o.scale.y,a.z*o.scale.z},matrix);};
         const auto lo=p.lo,hi=p.hi;
         p.center=point(p.center);p.u=dir(p.u);p.v=dir(p.v);
+        // Area vectors transform with the cofactor, not the position
+        // matrix. Preserve the moment of every merged source patch.
+        const XMFLOAT3 cofactor{o.scale.y*o.scale.z,o.scale.x*o.scale.z,o.scale.x*o.scale.y};
+        const float stretch=std::max({std::abs(cofactor.x),std::abs(cofactor.y),std::abs(cofactor.z)});
+        const auto rotation=Matrix(Pose{{},o.pose.q});
+        const auto rotate=[&](XMFLOAT3 a){return TransformDirection(a,rotation);};
+        const auto moment=p.normalMoment;
+        p.normalMoment=rotate({moment.x*cofactor.x,moment.y*cofactor.y,moment.z*cofactor.z});
+        p.normalDeviation*=stretch;p.samplingUncertainty*=stretch;
+        for(auto& n:p.normals){
+            const auto inverse=[](float s){return std::abs(s)>1.e-12f?1.f/s:0.f;};
+            n=rotate({n.x*inverse(o.scale.x),n.y*inverse(o.scale.y),n.z*inverse(o.scale.z)});
+            const float length=Length(n);n=length>1.e-12f?Scale(n,1.f/length):Normal(p.u,p.v);
+        }
         // Match InstanceSurfaceUVScale on the source instance, before the
         // aggregate adopts unit scale. Preserve the exact representative UV.
         if(o.flags&OASIS_INSTANCE_METRIC_BARK){
@@ -394,13 +492,15 @@ private:
         }
         const float a=Area(p.u,p.v),ratio=a/p.repArea;
         p.repArea=a;p.area*=ratio;p.covered*=ratio;p.priority*=ratio;
-        p.projected=Directional(Normal(p.u,p.v),p.covered);
+        // Do not replace the transformed source moment by the proxy normal.
+        // This estimate is accompanied by the directional deviation bound.
+        p.projected={std::abs(p.normalMoment.x),std::abs(p.normalMoment.y),std::abs(p.normalMoment.z)};
         p.sourceError*=std::max({std::abs(o.scale.x),std::abs(o.scale.y),std::abs(o.scale.z)});
         Fit(p);return p;
     }
     static std::filesystem::path Cache(const char* type,const std::string& sig){
         if(sig.empty())return {};
-        return DiskBake::Key(L"territorial-patrimony",("lod23-v2/"+std::string(type)+"/"+sig).c_str(),{});
+        return DiskBake::Key(L"territorial-patrimony",("lod23-v3-optics/"+std::string(type)+"/"+sig).c_str(),{});
     }
     static bool ReadLeaf(DiskBake::Reader& io,Node& n){
         return io.Pod(n.key.x)&&io.Pod(n.key.z)&&io.Pod(n.key.level)&&
