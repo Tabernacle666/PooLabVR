@@ -213,6 +213,7 @@ struct alignas(256) Constants {XMFLOAT4X4 vp[MaxViews],inverseVP[MaxViews],previ
     XMFLOAT4 forestAtmosphere; // fog, dew, insects, terrain height
     XMFLOAT4 forestFogBounds,forestFogStyle; // world XZ mapping; tone, contrast, min Y, Y span
     XMUINT4 forestFogBinding; // immutable atlas descriptor, bark specular percent, reserved
+    XMFLOAT4 forestFogExtension; // published center XZ, ground Y, radius
     XMFLOAT4X4 prevDlssVP[2];XMFLOAT4 dlssJitter;XMUINT4 dlssOutput;};
 static_assert(sizeof(Constants)%256==0);
 static_assert(sizeof(Constants)<=16u*D3D12_REQ_CONSTANT_BUFFER_ELEMENT_COUNT);

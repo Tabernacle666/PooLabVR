@@ -20,7 +20,7 @@ namespace OASIS {
 class TerrainExpansion {
     static constexpr int32_t GroundLayer=67,TreeLayer=ExpansionCanopyTileLayer,DetailLayer=69,FaunaLayer=70;
     static constexpr double Side=TerritorialTileMeters;
-    static constexpr double DetailReach=45.,FaunaReach=15.;
+    static constexpr double FaunaReach=15.; // local animated microfauna only
     // One full 8x8 page contains 128 source triangles, the MG2 cluster
     // triangle target. This bounds page geometry, NOT territory or view reach.
     static constexpr unsigned GroundPageLevels=3;
@@ -44,7 +44,7 @@ class TerrainExpansion {
     // Disjoint cover of the already published logical ground, not a second
     // object registry. The WorldRegistry owns the actual live route records.
     std::array<std::set<GpuTileKey>,GroundPageLevels+1> groundPages_;
-    uint64_t logicalGroundCells_{},logicalTrees_{};
+    uint64_t logicalGroundCells_{},logicalTrees_{},logicalDetailRoutes_{};
     uint64_t logicalCanopyCells_{},canopyOwnerPages_{};
     struct GroundDelta {
         std::map<uint64_t,WorldObject> added;
@@ -62,7 +62,7 @@ class TerrainExpansion {
     uint32_t steps_{},lastSteps_{};
     bool ready_{},selectionValid_{};
     int64_t lastX_{},lastZ_{};
-    std::set<GpuTileKey> localGenerated_;
+    std::set<GpuTileKey> faunaGenerated_;
     uint32_t material_{Invalid};
     using GrowthClock=std::chrono::steady_clock;
     struct GrowthPlan {
@@ -71,7 +71,7 @@ class TerrainExpansion {
         std::vector<WorldObject> groundObjects;
         std::vector<uint64_t> groundIds,groundRemoved;
         std::map<GpuTileKey,size_t> canopyDelta;
-        size_t groundCells{},canopyCells{};
+        size_t groundCells{},canopyCells{},detailCells{};
         double prepareMs{};
     };
     uint64_t pendingFrames_{};
@@ -219,7 +219,6 @@ class TerrainExpansion {
             if(Owns(key,p))fn(p,seed);
         }
     }
-    static double LocalReach(int32_t layer){return layer==FaunaLayer?FaunaReach:DetailReach;}
     void Generate(GpuTileKey key,Batch& batch)const{
         const auto c=Center(key);
         if(key.layer==GroundLayer){
@@ -347,6 +346,13 @@ class TerrainExpansion {
                         Generate(key,batch);
                         if(batch.assemblies.size()!=before)++canopyCells;
                     }
+                    // Ground vegetation is part of the immutable territory, not
+                    // a viewer-centered streaming ring. Its existing source
+                    // meshes are already registered in the MG2 hierarchy.
+                    key.layer=DetailLayer;
+                    const auto beforeDetail=batch.objects.size();
+                    Generate(key,batch);
+                    if(batch.objects.size()!=beforeDetail)++plan.detailCells;
                 }
             };
             // Visit only the new ring, not the entire previously published disk.
@@ -402,6 +408,16 @@ class TerrainExpansion {
         }
         if(addedRoutes!=uint64_t(batch.assemblies.size())*2u)
             Fail("A11.1 canopy pair coverage mismatch");
+        if(batch.objects.size()!=batch.ids.size())Fail("Ground flora identity coverage mismatch");
+        if(!batch.objects.empty()){
+            const auto created=world.CreateBatch(batch.objects,batch.ids);
+            if(created.size()!=batch.objects.size())Fail("Ground flora publication coverage mismatch");
+        }
+        logicalDetailRoutes_+=batch.objects.size();
+        char floraAudit[320];std::snprintf(floraAudit,sizeof(floraAudit),
+            "territory_flora steps=%u new_cells=%zu added_routes=%zu total_routes=%llu viewer_radius=none mg2_sources=1\r\n",
+            published,plan.detailCells,batch.objects.size(),static_cast<unsigned long long>(logicalDetailRoutes_));
+        DiagnosticLine(floraAudit);
         logicalCanopyCells_+=canopyCells;canopyOwnerPages_+=newPages;
         logicalGroundCells_+=groundCells;logicalTrees_+=batch.assemblies.size();
         char canopyAudit[384];std::snprintf(canopyAudit,sizeof(canopyAudit),
@@ -456,30 +472,27 @@ class TerrainExpansion {
         }
         return published;
     }
-    void StreamLocal(WorldRegistry& world,XMFLOAT3 viewer){
+    void StreamFauna(WorldRegistry& world,XMFLOAT3 viewer){
+        // Animated insects retain their local simulation policy. Never
+        // erase a terrestrial vegetation route when the viewer moves.
         const auto distance=[&](GpuTileKey key){const auto p=Center(key);
             return std::hypot(p.x-double(viewer.x),p.z-double(viewer.z));};
         std::vector<uint64_t> removed;
         const auto& resident=world.Resident().ResidentTiles();
-        for(auto it=localGenerated_.begin();it!=localGenerated_.end();){
-            if(distance(*it)<=LocalReach(it->layer)+20.){++it;continue;}
+        for(auto it=faunaGenerated_.begin();it!=faunaGenerated_.end();){
+            if(distance(*it)<=FaunaReach+20.){++it;continue;}
             if(const auto tile=resident.find(*it);tile!=resident.end())
                 for(const auto& o:tile->second.objects)removed.push_back(o.identity);
-            it=localGenerated_.erase(it);
+            it=faunaGenerated_.erase(it);
         }
         if(!removed.empty())world.EraseBatch(removed);
+        if(!flora_.insects)return;
         Batch batch;
-        for(int64_t x=Cell(viewer.x-DetailReach);x<=Cell(viewer.x+DetailReach);++x)
-        for(int64_t z=Cell(viewer.z-DetailReach);z<=Cell(viewer.z+DetailReach);++z){
-            auto key=GroundKey(x,z);if(!Eligible(key,lastSteps_))continue;
-            const double d=distance(key);
-            for(int32_t layer=DetailLayer;layer<=FaunaLayer;++layer){
-                key.layer=layer;
-                if(d>LocalReach(layer)||localGenerated_.contains(key))continue;
-                if(layer==DetailLayer&&!flora_.hasFloor)continue;
-                if(layer==FaunaLayer&&!flora_.insects)continue;
-                Generate(key,batch);localGenerated_.insert(key);
-            }
+        for(int64_t x=Cell(viewer.x-FaunaReach);x<=Cell(viewer.x+FaunaReach);++x)
+        for(int64_t z=Cell(viewer.z-FaunaReach);z<=Cell(viewer.z+FaunaReach);++z){
+            GpuTileKey key{x,z,FaunaLayer};
+            if(!Eligible(key,lastSteps_)||distance(key)>FaunaReach||faunaGenerated_.contains(key))continue;
+            Generate(key,batch);faunaGenerated_.insert(key);
         }
         if(!batch.objects.empty())world.CreateBatch(batch.objects,batch.ids);
     }
@@ -527,12 +540,12 @@ public:
     }
     void Install(SceneData& scene,WorldRegistry& world){
         DrainGrowth();
-        world_=&world;ready_=false;selectionValid_=false;lastSteps_=0;localGenerated_.clear();boundary_.clear();
+        world_=&world;ready_=false;selectionValid_=false;lastSteps_=0;faunaGenerated_.clear();boundary_.clear();
         for(auto& models:treeModels_)models.clear();
         for(auto& models:understoryFamilies_)models.clear();
         groundMeshes_.fill(Invalid);groundPageMeshes_.fill(Invalid);material_=Invalid;
         for(auto& pages:groundPages_)pages.clear();
-        logicalGroundCells_=logicalTrees_=0;
+        logicalGroundCells_=logicalTrees_=logicalDetailRoutes_=0;
         logicalCanopyCells_=canopyOwnerPages_=0;
         if(!scene.solarSystem||footprint_.empty())return;
         for(uint32_t i=0;i<scene.materialNames.size();++i)
@@ -579,6 +592,11 @@ public:
         ready_=true;
     }
     uint32_t Steps()const noexcept{return steps_;}
+    XMFLOAT4 FogExtent()const noexcept{
+        // Published extent only; no requested or in-flight growth leaks into fog.
+        if(!ready_||!lastSteps_)return {};
+        return {float(center_.x),float(center_.z),groundY_,float(Radius(lastSteps_))};
+    }
     double OpticalReach(XMFLOAT3 viewer)const noexcept{
         if(!ready_||!std::isfinite(viewer.x)||!std::isfinite(viewer.y)||!std::isfinite(viewer.z))return 0.;
         // Include the logical extent, full boundary cells and canopy clearance.
@@ -609,7 +627,7 @@ public:
         if(!lastSteps_||!std::isfinite(viewer.x)||!std::isfinite(viewer.z))return;
         const auto x=Cell(viewer.x),z=Cell(viewer.z);
         if(expanded||!selectionValid_||x!=lastX_||z!=lastZ_){
-            StreamLocal(world,viewer);selectionValid_=true;lastX_=x;lastZ_=z;
+            StreamFauna(world,viewer);selectionValid_=true;lastX_=x;lastZ_=z;
         }
     }
 };
