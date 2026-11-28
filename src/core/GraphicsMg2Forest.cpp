@@ -124,7 +124,8 @@ struct NvapiClusterBatch {
         blas.maxArgCount=limits.parts;
         blas.type=NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_TYPE_BUILD_BLAS_FROM_CLAS;
         blas.clasDesc={limits.totalClasCount,limits.maxClustersPerBlas};
-        for(size_t i=limits.clusters?0u:1u;i<inputs.size();++i){
+        for(size_t i=0;i<inputs.size();++i){
+            if((i==0&&!limits.clusters)||(i==1&&!limits.parts))continue;
             NVAPI_D3D12_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO info{};
             const NVAPI_GET_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO_PARAMS query{
                 NVAPI_GET_RAYTRACING_MULTI_INDIRECT_CLUSTER_OPERATION_REQUIREMENTS_INFO_PARAMS_VER,&inputs[i],&info};
@@ -209,7 +210,8 @@ struct DxrClusterBatch {
         operations[0].Inputs.pClusterTrianglesDesc=&triangles;
         operations[1].Inputs.Type=D3D12_RTAS_OPERATION_TYPE_BUILD_BLAS_FROM_CLAS;
         operations[1].Inputs.pClasDesc=&assembly;
-        for(size_t i=limits.clusters?0u:1u;i<operations.size();++i){
+        for(size_t i=0;i<operations.size();++i){
+            if((i==0&&!limits.clusters)||(i==1&&!limits.parts))continue;
             D3D12_RTAS_OPERATION_PREBUILD_INFO info{};
             rayDevice->GetRTASOperationPrebuildInfo(&operations[i].Inputs,&info);
             requirements[i]={info.ResultDataMaxSizeInBytes,info.ScratchDataSizeInBytes};
@@ -826,7 +828,8 @@ void Graphics::Impl::ResetForest(){
     forestSelection.stagedInputs.clear();forestSelection.stagedRevision=0;
     forestStagedEntries.clear();forestMutationEntries.clear();
     forestStageRevision=forestStageCheckedSerial=forestInitialCheckedSerial=0;
-    forestStageOpen=forestStageReady=forestInitialReady=forestLoading=false;
+    forestStageOpen=forestStageReady=forestInitialReady=forestLoading=forestPrewarmDone=forestPrewarmComplete=false;
+    forestPrewarmRevision=0;
     forestAdmissionSource=nullptr;forestAdmissionMissingTiles.clear();
     forestAdmissionStaticGeneration=0;
     forestAdmissionScanned=forestAdmissionStaticMissing=false;
@@ -907,20 +910,21 @@ bool Graphics::Impl::ValidateForestGeneration(ForestGeneration& pending,ForestBu
         HANDLE event=CreateEventW(nullptr,FALSE,FALSE,nullptr);
         if(!event)Fail("MG2 producer fence event");
         const auto hr=forestBuildQueue.fence->SetEventOnCompletion(pending.fence,event);
-        if(FAILED(hr)){CloseHandle(event);Hr(hr,"MG2 producer fence completion");}
+        if(FAILED(hr)){CloseHandle(event);GraphicsCheckHr(device.Get(),hr,"MG2 producer fence completion");}
         const auto waited=WaitForSingleObject(event,INFINITE);
         CloseHandle(event);
         if(waited!=WAIT_OBJECT_0)Fail("MG2 producer fence wait");
         completed=forestBuildQueue.fence->GetCompletedValue();
     }
-    if(completed==UINT64_MAX||completed<pending.fence)Fail("MG2 producer GPU completion invalid");
+    if(completed==UINT64_MAX)GraphicsCheckHr(device.Get(),DXGI_ERROR_DEVICE_REMOVED,"MG2 producer fence removed");
+    if(completed<pending.fence)Fail("MG2 producer GPU completion invalid");
     work.waitMs=float(1000.*QpcSeconds(QpcCounter()-waitStart));
     const auto validateStart=QpcCounter();
     // The GPU already scattered all native result addresses into the
     // consumer table. Validate ownership/slot bounds, not CPU readbacks.
     // Prebuild max sizes and the API's implicit destinations contract
     // guarantee placement; device removal must never publish a candidate.
-    Hr(device->GetDeviceRemovedReason(),"MG2 producer completion");
+    GraphicsCheckHr(device.Get(),device->GetDeviceRemovedReason(),"MG2 producer completion");
     bool valid=true;
     work.builtClas=uint32_t(pending.newClasKeys.size());
     float clasMs=-1.f,blasMs=-1.f;
@@ -1994,7 +1998,7 @@ bool Graphics::Impl::PrewarmForest(std::atomic<uint32_t>& progress,const std::at
     const char* reason="none";
     const auto noteFailure=[&](const char* label){
         ++failures;reason=label?label:"unknown";
-        Hr(device->GetDeviceRemovedReason(),"LOD24 prewarm device");
+        GraphicsCheckHr(device.Get(),device->GetDeviceRemovedReason(),"LOD24 prewarm device");
     };
     const auto report=[&](const char* phase){
         DXGI_QUERY_VIDEO_MEMORY_INFO local{},nonlocal{};
@@ -2108,6 +2112,7 @@ bool Graphics::Impl::PrepareLoading(const XRFrame& xr,std::atomic<uint32_t>& pro
     if(!diagnosticDxrEnabled)Fail("LOD24 mandatory MG2 admission requires DXR enabled");
     if(cancel.load(std::memory_order_acquire))return false;
     forestLoading=true;
+    GraphicsCheckHr(device.Get(),device->GetDeviceRemovedReason(),"LOD24 loading entry");
     descriptorAllocator.BeginRecording();managedMemory.BeginFrame();CollectManaged();
     residency.Begin();vramCache.RequireActive();
     const auto* tiles=contributions.residentTiles?contributions.residentTiles(contributions.context):nullptr;
@@ -2122,18 +2127,27 @@ bool Graphics::Impl::PrepareLoading(const XRFrame& xr,std::atomic<uint32_t>& pro
             Fail("LOD24 mandatory initial admission failed");
         return false;
     }
-    progress.store(3u,std::memory_order_release);
+    if(forestHierarchy&&forestPrewarmRevision!=forestHierarchy->Revision())forestPrewarmDone=false;
+    if(!forestPrewarmDone)progress.store(3u,std::memory_order_release);
     if(territorialCatalog.blocked)Fail("LOD24 territorial catalog failed");
     const auto* architecture=contributions.architecturePatrimony?contributions.architecturePatrimony(contributions.context):nullptr;
     if(!forestHierarchy||territorialCatalog.completion.valid()||!territorialCatalog.pending.empty()||
        !territorialCatalog.retired.empty()||(architecture&&!architecture->Changes().empty())||
-       forestBuild.requested||forestSelection.requested||forestPending||forestStageOpen||!forestMutationEntries.empty()||
-       forestSelection.pages!=forestHierarchy||forestSelection.territorialRevision!=territorialCatalog.activeRevision)
+       forestBuild.requested||forestSelection.requested||forestPending||forestStageOpen||!forestMutationEntries.empty())
         return false;
     if(forestRequestFailed)Fail("LOD24 initial generation failed");
-    const bool complete=PrewarmForest(progress,cancel);
-    if(cancel.load(std::memory_order_acquire))return false;
-    DiagnosticLine(complete?"lod24_world_gate ready=1 prewarm_complete=1\r\n":
+    // Warm the complete catalog before the final adaptive selection.
+    if(!forestPrewarmDone){
+        DiagnosticLine("lod24_prewarm_order catalog_ready=1 before_final_selection=1\r\n");
+        forestPrewarmComplete=PrewarmForest(progress,cancel);
+        if(cancel.load(std::memory_order_acquire))return false;
+        forestPrewarmRevision=forestHierarchy->Revision();
+        forestPrewarmDone=true;forestRefreshSelection=true;
+        return false;
+    }
+    if(forestSelection.pages!=forestHierarchy||forestSelection.territorialRevision!=territorialCatalog.activeRevision||
+       forestRefreshSelection)return false;
+    DiagnosticLine(forestPrewarmComplete?"lod24_world_gate ready=1 prewarm_complete=1\r\n":
         "lod24_world_gate ready=1 prewarm_complete=0 cpu_catalog_retained=1\r\n");
     progress.store(6u,std::memory_order_release);
     forestLoading=false;
@@ -2234,13 +2248,24 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         {
             // The producer fence has already completed: explicit GPU queue
             // dependencies transfer visibility without waiting for production.
-            direct.Wait(forestBuildQueue,pending.fence);
-            compute.Wait(forestBuildQueue,pending.fence);
+            GraphicsCheckHr(device.Get(),device->GetDeviceRemovedReason(),"MG2 before publication");
+            if(forestLoading){
+                char line[192];std::snprintf(line,sizeof(line),"lod24_publish phase=begin serial=%llu arenas=%zu fence=%llu\r\n",
+                    (unsigned long long)pending.serial,pending.sourceArenas.size(),(unsigned long long)pending.fence);
+                DiagnosticLine(line);
+            }else{
+                direct.Wait(forestBuildQueue,pending.fence);
+                compute.Wait(forestBuildQueue,pending.fence);
+            }
             for(uint32_t i=0;i<pending.viewRequests.size();++i){
                 const auto& view=pending.viewRequests[i];
-                if(view.resource)pending.views[i]=Srv(view.resource,view.count,view.stride,{},view.first);
+                if(view.resource){
+                    pending.views[i]=Srv(view.resource,view.count,view.stride,{},view.first);
+                    if(forestLoading)GraphicsCheckHr(device.Get(),device->GetDeviceRemovedReason(),"MG2 generation SRV");
+                }
             }
             PublishForestSourceViews(pending);
+            if(forestLoading)DiagnosticLine("lod24_publish phase=views_ready\r\n");
             const auto& routeView=pending.viewRequests[ForestGeneration::Routes];
             if(routeView.resource)pending.routeGpuAddress=routeView.resource->GetGPUVirtualAddress()+routeView.first*routeView.stride;
             pending.viewRequests={};
@@ -2532,7 +2557,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     // During initial loading, wait for the catalog snapshot to settle rather
     // than rebuilding a world generation for each authoring batch.
     if(forestLoading&&forestInitialReady&&!forestStageOpen&&forestMutationEntries.empty()&&
-       (territorialCatalog.completion.valid()||!territorialCatalog.pending.empty()||
+       (!forestPrewarmDone||forestPrewarmRevision!=forestHierarchy->Revision()||territorialCatalog.completion.valid()||!territorialCatalog.pending.empty()||
         !territorialCatalog.retired.empty()))return;
     const auto liveGenerations=std::count_if(forestGenerations.begin(),forestGenerations.end(),
         [](const auto& generation){return generation.use_count()>1;});
@@ -3355,10 +3380,17 @@ bool Graphics::Impl::EnsureForestSourceArenas(const Mg2Pages& catalog){
     const bool hasVa=SUCCEEDED(device->CheckFeatureSupport(D3D12_FEATURE_GPU_VIRTUAL_ADDRESS_SUPPORT,&va,sizeof(va)))&&
         va.MaxGPUVirtualAddressBitsPerResource;
     const auto streams={ForestSourceStream::Vertices,ForestSourceStream::Indices};
+    // Limit the address range of ONE view, never total geometry or VRAM.
+    // Each catalog segment is mesh-complete and retains its logical offsets.
+    const auto viewBytes=[](ForestSourceStream stream){
+        const UINT64 elements=UINT64(1)<<D3D12_REQ_BUFFER_RESOURCE_TEXEL_COUNT_2_TO_EXP;
+        return std::min<UINT64>(UINT32_MAX,elements*Mg2Pages::SourceStride(stream))&~(TileBytes-1u);
+    };
     const auto reserve=[&](ForestSourceStream stream,UINT64 first,UINT64 end,ComPtr<ID3D12Resource>& resource){
         if(end<=first||first%TileBytes||end%TileBytes)return false;
         const UINT64 required=end-first;
-        const UINT64 remaining=Mg2Pages::SourceAddressLimit(stream)-first;
+        const UINT64 remaining=std::min<UINT64>(Mg2Pages::SourceAddressLimit(stream)-first,viewBytes(stream));
+        if(required>remaining)return false;
         UINT64 target=required;
         if(hasVa){
             const auto bits=std::min(va.MaxGPUVirtualAddressBitsPerResource,63u);
@@ -3371,7 +3403,10 @@ bool Graphics::Impl::EnsureForestSourceArenas(const Mg2Pages& catalog){
             if(SUCCEEDED(device->CreateReservedResource(&desc,D3D12_RESOURCE_STATE_COMMON,nullptr,
                     IID_PPV_ARGS(&candidate)))){
                 UINT tiles=0;device->GetResourceTiling(candidate.Get(),&tiles,nullptr,nullptr,nullptr,0,nullptr);
-                if(tiles==target/TileBytes){resource=std::move(candidate);return true;}
+                if(tiles==target/TileBytes){
+                    candidate->SetName(stream==ForestSourceStream::Vertices?L"OASIS.MG2.Source.Vertices":L"OASIS.MG2.Source.Indices");
+                    resource=std::move(candidate);return true;
+                }
             }
             if(target==required)return false;
             target=std::max(required,(target/2u)&~(TileBytes-1u));
@@ -3383,7 +3418,8 @@ bool Graphics::Impl::EnsureForestSourceArenas(const Mg2Pages& catalog){
         if(fits)for(const auto stream:streams){
             const auto k=uint32_t(stream);const auto& a=pool.arenas.back();
             fits&=segment.begin[k]>=a.end[k]&&segment.end[k]>=a.begin[k]&&
-                segment.end[k]-a.begin[k]<=a.resources[k]->GetDesc().Width;
+                segment.end[k]-a.begin[k]<=a.resources[k]->GetDesc().Width&&
+                segment.end[k]-a.begin[k]<=viewBytes(stream);
         }
         if(fits){pool.arenas.back().end=segment.end;continue;}
         ForestSourcePool::Arena arena;arena.begin=segment.begin;arena.end=segment.end;
@@ -3393,6 +3429,12 @@ bool Graphics::Impl::EnsureForestSourceArenas(const Mg2Pages& catalog){
                !reserve(stream,arena.begin[k],arena.end[k],arena.resources[k]))return false;
         }
         if(pool.arenas.size()>=UINT32_MAX)return false;
+        if(forestLoading){
+            char line[256];std::snprintf(line,sizeof(line),"lod24_source_arena id=%zu vertex_va_bytes=%llu index_va_bytes=%llu\r\n",
+                pool.arenas.size(),(unsigned long long)arena.resources[0]->GetDesc().Width,
+                (unsigned long long)arena.resources[1]->GetDesc().Width);
+            DiagnosticLine(line);
+        }
         pool.arenas.push_back(std::move(arena));
     }
     return true;
@@ -3408,13 +3450,21 @@ void Graphics::Impl::PublishForestSourceViews(ForestGeneration& generation){
         // arena owns the original slots, extra arenas own separate handles.
         auto& vertexView=i?arena.vertexView:generation.views[ForestGeneration::Vertices];
         auto& indexView=i?arena.indexView:generation.views[ForestGeneration::Triangles];
+        if(forestLoading){
+            char line[192];std::snprintf(line,sizeof(line),"lod24_publish phase=arena index=%zu vertices=%u indices=%u\r\n",
+                i,arena.vertexCount,arena.indexCount);DiagnosticLine(line);
+        }
         vertexView=Srv(arena.vertices.Get(),arena.vertexCount,sizeof(Vertex));
+        GraphicsCheckHr(device.Get(),device->GetDeviceRemovedReason(),"MG2 source vertex SRV");
         indexView=Srv(arena.indices.Get(),arena.indexCount,sizeof(uint32_t));
+        GraphicsCheckHr(device.Get(),device->GetDeviceRemovedReason(),"MG2 source index SRV");
         table.push_back({Physical(vertexView),Physical(indexView)});
     }
+    GraphicsCheckHr(device.Get(),device->GetDeviceRemovedReason(),"MG2 before arena table");
     generation.sourceArenaTable=Host(table.size()*sizeof(table.front()),D3D12_HEAP_TYPE_UPLOAD);
+    generation.sourceArenaTable->SetName(L"OASIS.MG2.Source.ArenaTable");
     void* mapped{};const D3D12_RANGE none{};
-    Hr(generation.sourceArenaTable->Map(0,&none,&mapped),"MG2 arena table map");
+    GraphicsCheckHr(device.Get(),generation.sourceArenaTable->Map(0,&none,&mapped),"MG2 arena table map");
     std::memcpy(mapped,table.data(),table.size()*sizeof(table.front()));
     generation.sourceArenaTable->Unmap(0,nullptr);
     generation.views[ForestGeneration::Remap]=Srv(generation.sourceArenaTable.Get(),
@@ -3572,7 +3622,7 @@ bool Graphics::Impl::UploadForestSourceTiles(const Mg2Pages& catalog,
         for(const auto& b:added)mapBlock(*b,false);
         uploadCommands.Execute(forestBuildQueue);
         WaitStartup(forestBuildQueue);
-        Hr(device->GetDeviceRemovedReason(),"MG2 source tiles");
+        GraphicsCheckHr(device.Get(),device->GetDeviceRemovedReason(),"MG2 source tiles");
         for(const auto& b:added){
             b->ready=true;b->lastUse=++pool.clock;
             output.sourceBlocks.push_back(b);
@@ -3653,7 +3703,8 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
     const auto submit=[&]{
         const auto begin=QpcCounter();
         output.commands.Submit(forestBuildQueue);
-        output.fence=forestBuildQueue.Signal();
+        output.fence=++forestBuildQueue.serial;
+        GraphicsCheckHr(device.Get(),forestBuildQueue.queue->Signal(forestBuildQueue.fence.Get(),output.fence),"MG2 producer signal");
         work.submitMs+=float(1000.*QpcSeconds(QpcCounter()-begin));
     };
     const auto& routes=prepared.routes;
@@ -3765,7 +3816,6 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
         if(code||!std::string_view(reason).starts_with("allocation_"))work.result.buildCode=code;
         return false;
     };
-    const UINT64 addressBytes=clustered?prepared.newBlasParts.size()*sizeof(UINT64):0u;
     if(forestBuildQueries){
         output.buildReadback=make(3u*sizeof(UINT64),
             D3D12_HEAP_TYPE_READBACK,D3D12_RESOURCE_STATE_COPY_DEST);
@@ -3877,26 +3927,13 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
                 }
                 clusterArgs.push_back(args);
             }
-            std::array<ClusterRequirements,2> sizes{};
-            if(const auto code=api.Prepare(device.Get(),list,limits,sizes);code)
-                return fail("taille_clas_blas",code);
-            const auto scratchBytes=std::max(sizes[0].scratch,sizes[1].scratch);
-            if((limits.clusters&&!sizes[0].result)||!sizes[1].result)return fail("taille_clas_blas_nulle");
             const UINT64 fullBytes=UINT64(initial.size())*sizeof(UINT64);
-            const UINT64 newBytes=UINT64(limits.clusters)*sizeof(UINT64);
-            const UINT64 required=allocation(pack.bytes.size())+allocation(sizes[0].result)+
-                allocation(sizes[1].result)+allocation(scratchBytes)+allocation(fullBytes)+
-                allocation(newBytes)+allocation(addressBytes)+allocation(tableBytes)+
-                allocation(UINT64(ommIndices.size())*sizeof(uint32_t));
-            if(!fits(required))return false;
             const auto alloc=[&](UINT64 bytes,D3D12_RESOURCE_STATES state){
                 return make(bytes,D3D12_HEAP_TYPE_DEFAULT,state,D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
             };
             const auto clasAddresses=make(fullBytes,D3D12_HEAP_TYPE_DEFAULT,D3D12_RESOURCE_STATE_COPY_DEST);
-            const auto newBlasAddresses=alloc(addressBytes,UavState);
-            const auto blas=alloc(sizes[1].result,AsState);
-            const auto scratch=alloc(scratchBytes,UavState);
-            if(!clasAddresses||!newBlasAddresses||!blas||!scratch)return fail("allocation_clas_blas");
+            if(!clasAddresses)return fail("allocation_clas_address_table");
+            clasAddresses->SetName(L"OASIS.MG2.CLAS.AssemblyAddresses");
             for(size_t i=0;i<initial.size();){
                 const auto& slot=initial[i];
                 if(!slot){++i;continue;}
@@ -3907,72 +3944,142 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
                     slot.buffer.Get(),slot.offset,UINT64(end-i)*sizeof(UINT64));
                 i=end;
             }
-            const auto clasAddressBase=clasAddresses->GetGPUVirtualAddress();
-            const auto scratchAddress=scratch->GetGPUVirtualAddress();
-            if(limits.clusters){
-                const auto clas=alloc(sizes[0].result,AsState);
-                const auto newAddresses=alloc(newBytes,UavState);
-                const auto clusterArgBuffer=upload(clusterArgs.data(),clusterArgs.size()*sizeof(clusterArgs.front()));
-                if(!clas||!newAddresses||!clusterArgBuffer)return fail("allocation_clas_incremental");
-                const ClusterBuffers clasBuffers{clas->GetGPUVirtualAddress(),scratchAddress,
+            // Independent packet result/scratch allocations. Preserve the
+            // complete ordered cut and all original cache identities.
+            const auto packet=[&](const wchar_t* name){
+                list->SetName(name);
+                submit();WaitStartup(forestBuildQueue);
+                output.commands.Reset();list=output.commands.list.Get();
+            };
+            const auto recordFailure=[&](const char* phase,int code){
+                GraphicsCheckHr(device.Get(),device->GetDeviceRemovedReason(),phase);
+                return fail(phase,code);
+            };
+            packet(L"OASIS.MG2.Packet.GeometryAndCachedAddresses");
+            constexpr size_t ClasPerPacket=1024,BlasPerPacket=64;
+            constexpr uint64_t ClasReferencesPerPacket=8192;
+            size_t clasPackets=0,blasPackets=0;
+            UINT64 peakScratch=0;
+            // Scatter positions are independent of packets. Index once to
+            // avoid rescanning every CLAS reference for every packet.
+            std::vector<std::vector<size_t>> scatter(clusterArgs.size());
+            for(size_t i=0;i<missing.size();++i)if(missing[i]!=Invalid){
+                if(missing[i]>=scatter.size())return fail("identite_clas_packet");
+                scatter[missing[i]].push_back(i);
+            }
+            for(size_t first=0;first<clusterArgs.size();first+=ClasPerPacket){
+                const size_t end=std::min(first+ClasPerPacket,clusterArgs.size());
+                ClusterLimits batch{};batch.omm=limits.omm;batch.clusters=uint32_t(end-first);
+                for(size_t i=first;i<end;++i){
+                    const auto& cluster=prepared.newClusters[i];
+                    batch.maxPrimitiveBase=std::max(batch.maxPrimitiveBase,output.newClasKeys[i].second);
+                    batch.maxTriangleCount=std::max(batch.maxTriangleCount,cluster.indexCount/3u);
+                    batch.maxVertexCount=std::max(batch.maxVertexCount,cluster.vertexCount);
+                    batch.totalTriangles+=cluster.indexCount/3u;batch.totalVertices+=cluster.vertexCount;
+                }
+                std::array<ClusterRequirements,2> sizes{};
+                if(const auto code=api.Prepare(device.Get(),list,batch,sizes);code)return recordFailure("taille_clas_packet",code);
+                if(!sizes[0].result)return fail("taille_clas_packet_nulle");
+                peakScratch=std::max(peakScratch,sizes[0].scratch);
+                const auto bytes=UINT64(batch.clusters)*sizeof(UINT64);
+                if(!fits(allocation(pack.bytes.size())+allocation(fullBytes)+allocation(sizes[0].result)+
+                    allocation(sizes[0].scratch)+allocation(bytes)))return false;
+                const auto clas=alloc(sizes[0].result,AsState),scratch=alloc(sizes[0].scratch,UavState);
+                const auto newAddresses=alloc(bytes,UavState);
+                const auto args=upload(clusterArgs.data()+first,(end-first)*sizeof(clusterArgs.front()));
+                if(!clas||!scratch||!newAddresses||!args)return fail("allocation_clas_packet");
+                clas->SetName(L"OASIS.MG2.CLAS.Packet.Result");
+                scratch->SetName(L"OASIS.MG2.CLAS.Packet.Scratch");
+                newAddresses->SetName(L"OASIS.MG2.CLAS.Packet.Addresses");
+                const ClusterBuffers buffers{clas->GetGPUVirtualAddress(),scratch->GetGPUVirtualAddress(),
                     {newAddresses->GetGPUVirtualAddress(),sizeof(UINT64)},
-                    {clusterArgBuffer->GetGPUVirtualAddress(),sizeof(clusterArgs.front())}};
-                if(const auto code=api.Record(list,0u,clasBuffers);code)return fail("commande_clas",code);
+                    {args->GetGPUVirtualAddress(),sizeof(clusterArgs.front())}};
+                if(const auto code=api.Record(list,0u,buffers);code)return recordFailure("commande_clas_packet",code);
                 FinishUav(list,clas.Get());FinishUav(list,scratch.Get());
                 Transition(list,newAddresses.Get(),UavState,D3D12_RESOURCE_STATE_COPY_SOURCE);
-                for(size_t i=0;i<missing.size();){
-                    if(missing[i]==Invalid){++i;continue;}
-                    size_t end=i+1;
-                    while(end<missing.size()&&missing[end]==missing[i]+uint32_t(end-i))++end;
-                    list->CopyBufferRegion(clasAddresses.Get(),UINT64(i)*sizeof(UINT64),
-                        newAddresses.Get(),UINT64(missing[i])*sizeof(UINT64),UINT64(end-i)*sizeof(UINT64));
-                    i=end;
-                }
-                for(size_t i=0;i<output.newClasKeys.size();++i)
+                for(size_t i=first;i<end;++i)for(auto slot:scatter[i])
+                    list->CopyBufferRegion(clasAddresses.Get(),UINT64(slot)*sizeof(UINT64),
+                        newAddresses.Get(),UINT64(i-first)*sizeof(UINT64),sizeof(UINT64));
+                packet(L"OASIS.MG2.Packet.BuildCLAS");
+                for(size_t i=first;i<end;++i)
                     output.clasCache.emplace(output.newClasKeys[i],
-                        ForestClasEntry{{newAddresses,UINT64(i)*sizeof(UINT64)},clas});
-                output.staging.insert(output.staging.end(),{newAddresses,clusterArgBuffer});
+                        ForestClasEntry{{newAddresses,UINT64(i-first)*sizeof(UINT64)},clas});
+                ++clasPackets;
             }
-            Transition(list,clasAddresses.Get(),D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-            std::vector<typename Api::Blas> blasArgs;
-            blasArgs.reserve(output.newBlasParts.size());
+            // Buffer promotion/decay makes the completed assembly address
+            // table readable in each subsequent independent submission.
+            if(forestBuildQueries)list->EndQuery(forestBuildQueries.Get(),D3D12_QUERY_TYPE_TIMESTAMP,1u);
             UINT64 cursor=0;
-            size_t blasSlot=0;
-            for(const auto p:output.newBlasParts){
-                const auto& part=parts[p];
-                blasArgs.push_back(Api::BlasArgs(part.count,clasAddressBase+cursor*sizeof(UINT64)));
-                cursor+=part.count;
-                auto entry=std::make_shared<ForestBlasEntry>();
-                entry->storage=blas;
-                entry->slot={newBlasAddresses,UINT64(blasSlot++)*sizeof(UINT64)};
-                std::unordered_map<ID3D12Resource*,bool> seen;
-                entry->clusterAddresses.reserve(part.count);
-                for(uint32_t i=part.first;i<part.first+part.count;++i){
-                    const auto& key=prepared.clasKeys[i];
-                    const auto& cluster=output.clasCache.at(key);
-                    if(seen.emplace(cluster.storage.Get(),true).second)entry->dependencies.push_back(cluster.storage);
-                    entry->clusterAddresses.emplace_back(key,cluster);
+            const auto clasAddressBase=clasAddresses->GetGPUVirtualAddress();
+            for(size_t first=0;first<output.newBlasParts.size();){
+                size_t end=first;uint64_t references=0;
+                while(end<output.newBlasParts.size()&&end-first<BlasPerPacket){
+                    const auto n=parts[output.newBlasParts[end]].count;
+                    if(end!=first&&references+n>ClasReferencesPerPacket)break;
+                    references+=n;++end;
                 }
-                output.blasEntries[p]=std::move(entry);
+                if(end==first||references>UINT32_MAX)return fail("limite_abi_blas_packet");
+                ClusterLimits batch{};batch.omm=limits.omm;batch.parts=uint32_t(end-first);
+                batch.totalClasCount=uint32_t(references);
+                std::vector<typename Api::Blas> blasArgs;blasArgs.reserve(end-first);
+                for(size_t i=first;i<end;++i){
+                    const auto& part=parts[output.newBlasParts[i]];
+                    batch.maxClustersPerBlas=std::max(batch.maxClustersPerBlas,part.count);
+                    blasArgs.push_back(Api::BlasArgs(part.count,clasAddressBase+cursor*sizeof(UINT64)));
+                    cursor+=part.count;
+                }
+                std::array<ClusterRequirements,2> sizes{};
+                if(const auto code=api.Prepare(device.Get(),list,batch,sizes);code)return recordFailure("taille_blas_packet",code);
+                if(!sizes[1].result)return fail("taille_blas_packet_nulle");
+                peakScratch=std::max(peakScratch,sizes[1].scratch);
+                const auto bytes=UINT64(batch.parts)*sizeof(UINT64);
+                if(!fits(allocation(pack.bytes.size())+allocation(fullBytes)+allocation(tableBytes)+
+                    allocation(sizes[1].result)+allocation(sizes[1].scratch)+allocation(bytes)))return false;
+                const auto blas=alloc(sizes[1].result,AsState),scratch=alloc(sizes[1].scratch,UavState);
+                const auto newAddresses=alloc(bytes,UavState);
+                const auto args=upload(blasArgs.data(),blasArgs.size()*sizeof(blasArgs.front()));
+                if(!blas||!scratch||!newAddresses||!args)return fail("allocation_blas_packet");
+                blas->SetName(L"OASIS.MG2.BLAS.Packet.Result");
+                scratch->SetName(L"OASIS.MG2.BLAS.Packet.Scratch");
+                newAddresses->SetName(L"OASIS.MG2.BLAS.Packet.Addresses");
+                const ClusterBuffers buffers{blas->GetGPUVirtualAddress(),scratch->GetGPUVirtualAddress(),
+                    {newAddresses->GetGPUVirtualAddress(),sizeof(UINT64)},
+                    {args->GetGPUVirtualAddress(),sizeof(blasArgs.front())}};
+                Transition(list,clasAddresses.Get(),D3D12_RESOURCE_STATE_COMMON,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+                if(const auto code=api.Record(list,1u,buffers);code)return recordFailure("commande_blas_packet",code);
+                FinishUav(list,blas.Get());FinishUav(list,scratch.Get());
+                Transition(list,newAddresses.Get(),UavState,D3D12_RESOURCE_STATE_COPY_SOURCE);
+                for(size_t i=first;i<end;){
+                    size_t last=i+1;
+                    while(last<end&&output.newBlasParts[last]==output.newBlasParts[i]+last-i)++last;
+                    list->CopyBufferRegion(addresses.Get(),UINT64(output.newBlasParts[i])*sizeof(UINT64),
+                        newAddresses.Get(),UINT64(i-first)*sizeof(UINT64),UINT64(last-i)*sizeof(UINT64));
+                    i=last;
+                }
+                packet(L"OASIS.MG2.Packet.AssembleBLAS");
+                for(size_t i=first;i<end;++i){
+                    const auto p=output.newBlasParts[i];const auto& part=parts[p];
+                    auto entry=std::make_shared<ForestBlasEntry>();
+                    entry->storage=blas;entry->slot={newAddresses,UINT64(i-first)*sizeof(UINT64)};
+                    std::unordered_map<ID3D12Resource*,bool> seen;
+                    entry->clusterAddresses.reserve(part.count);
+                    for(uint32_t c=part.first;c<part.first+part.count;++c){
+                        const auto& key=prepared.clasKeys[c];
+                        const auto& cluster=output.clasCache.at(key);
+                        if(seen.emplace(cluster.storage.Get(),true).second)entry->dependencies.push_back(cluster.storage);
+                        entry->clusterAddresses.emplace_back(key,cluster);
+                    }
+                    output.blasEntries[p]=std::move(entry);
+                }
+                ++blasPackets;first=end;
             }
             if(cursor!=initial.size())return fail("identite_blas_incremental");
-            const auto blasArgBuffer=upload(blasArgs.data(),blasArgs.size()*sizeof(blasArgs.front()));
-            if(!blasArgBuffer)return fail("allocation_arguments_clas_blas");
-            const ClusterBuffers blasBuffers{blas->GetGPUVirtualAddress(),scratchAddress,
-                {newBlasAddresses->GetGPUVirtualAddress(),sizeof(UINT64)},{blasArgBuffer->GetGPUVirtualAddress(),sizeof(blasArgs.front())}};
-            if(forestBuildQueries)list->EndQuery(forestBuildQueries.Get(),D3D12_QUERY_TYPE_TIMESTAMP,1u);
-            if(const auto code=api.Record(list,1u,blasBuffers);code)return fail("commande_blas_cluster",code);
-            FinishUav(list,blas.Get());
-            Transition(list,newBlasAddresses.Get(),UavState,D3D12_RESOURCE_STATE_COPY_SOURCE);
-            // Scatter only the new addresses into their current variant slots.
-            for(size_t i=0;i<output.newBlasParts.size();){
-                size_t end=i+1;
-                while(end<output.newBlasParts.size()&&output.newBlasParts[end]==output.newBlasParts[i]+end-i)++end;
-                list->CopyBufferRegion(addresses.Get(),UINT64(output.newBlasParts[i])*sizeof(UINT64),
-                    newBlasAddresses.Get(),UINT64(i)*sizeof(UINT64),UINT64(end-i)*sizeof(UINT64));
-                i=end;
+            if(forestLoading&&(clasPackets>1||blasPackets>1)){
+                char line[256];std::snprintf(line,sizeof(line),
+                    "lod24_gpu_packets clas=%zu blas=%zu new_clas=%u new_blas=%u peak_scratch_bytes=%llu\r\n",
+                    clasPackets,blasPackets,limits.clusters,limits.parts,(unsigned long long)peakScratch);
+                DiagnosticLine(line);
             }
-            output.staging.insert(output.staging.end(),{clasAddresses,scratch,blasArgBuffer,newBlasAddresses});
             return true;
         };
         if(!output.newBlasParts.empty()){
@@ -3986,8 +4093,12 @@ bool Graphics::Impl::UploadForestPages(const Mg2LodCut& cut,ForestPreparedGenera
                 NvapiClusterBatch api;
                 if(!build(api))return false;
             }
-        }else if(forestBuildQueries)list->EndQuery(forestBuildQueries.Get(),D3D12_QUERY_TYPE_TIMESTAMP,1u);
-        Transition(list,addresses.Get(),D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        }else{
+            if(forestBuildQueries)list->EndQuery(forestBuildQueries.Get(),D3D12_QUERY_TYPE_TIMESTAMP,1u);
+            Transition(list,addresses.Get(),D3D12_RESOURCE_STATE_COPY_DEST,D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        }
+        // New BLAS address writes completed in fenced packets. The buffer
+        // is in COMMON and promotes for later shader reads.
     }else{
         std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> inputs(parts.size());
         std::vector<D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC> operations(parts.size());

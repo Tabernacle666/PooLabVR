@@ -7,14 +7,14 @@
 namespace OASIS {
 void DiagnosticLine(const char*) noexcept;
 namespace {
-void DumpRemovedDevice(ID3D12Device* device) noexcept {
+void DumpRemovedDevice(ID3D12Device* device,HRESULT observed=S_OK) noexcept {
     if(!device)return;
     const HRESULT reason=device->GetDeviceRemovedReason();
-    if(SUCCEEDED(reason))return;
+    if(SUCCEEDED(reason)&&observed!=DXGI_ERROR_DEVICE_REMOVED&&observed!=DXGI_ERROR_DEVICE_RESET&&observed!=DXGI_ERROR_DEVICE_HUNG)return;
     static std::atomic<bool> reported{};
     if(reported.exchange(true))return;
     char line[1024];
-    std::snprintf(line,sizeof(line),"dred_begin reason=0x%08lx\r\n",static_cast<unsigned long>(reason));
+    std::snprintf(line,sizeof(line),"dred_begin reason=0x%08lx observed=0x%08lx\r\n",static_cast<unsigned long>(reason),static_cast<unsigned long>(observed));
     DiagnosticLine(line);
     ComPtr<ID3D12DeviceRemovedExtendedData> dred;
     if(FAILED(device->QueryInterface(IID_PPV_ARGS(&dred)))){
@@ -61,6 +61,13 @@ void DumpRemovedDevice(ID3D12Device* device) noexcept {
     }else DiagnosticLine("dred_page_fault_unavailable\r\n");
     DiagnosticLine("dred_end\r\n");
 }
+}
+void GraphicsCheckHr(ID3D12Device* device,HRESULT hr,const char* phase){
+    if(FAILED(hr)){
+        char line[384];std::snprintf(line,sizeof(line),"gpu_failure phase=%s hr=0x%08lx\r\n",phase,static_cast<unsigned long>(hr));
+        DiagnosticLine(line);DumpRemovedDevice(device,hr);
+    }
+    Hr(hr,phase);
 }
 namespace graphics_internal {
 thread_local TextureDependencies textureDependencies;

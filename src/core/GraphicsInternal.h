@@ -37,6 +37,8 @@ struct NVSDK_NGX_Handle;
 
 namespace OASIS {
 using Microsoft::WRL::ComPtr;
+// Fail() exits the process. Collect the removed-device report BEFORE it.
+void GraphicsCheckHr(ID3D12Device*,HRESULT,const char*);
 namespace graphics_internal {
 constexpr UINT64 MiB=1024ull*1024,UploadChunk=8*MiB;
 
@@ -835,7 +837,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void CacheForestAcceleration(const ForestGeneration&);
     bool PrewarmForest(std::atomic<uint32_t>&,const std::atomic<bool>&);
     bool PrepareLoading(const XRFrame&,std::atomic<uint32_t>&,const std::atomic<bool>&);
-    bool forestLoading{};
+    bool forestLoading{},forestPrewarmDone{},forestPrewarmComplete{};
+    uint64_t forestPrewarmRevision{};
     bool ValidateForestGeneration(ForestGeneration&,ForestBuildWork&);
     static void MatchForestShadowVariants(ForestGeneration&,const ForestGeneration*);
     void InvalidateForestShadows(Frame&,const GpuSceneCache*,const ForestGeneration*,const ForestGeneration*);

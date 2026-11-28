@@ -109,7 +109,7 @@ void DiagnosticLine(const char*) noexcept;
         return resource;
     }
 
-    ComPtr<ID3D12Resource> Graphics::Impl::Host(UINT64 size,D3D12_HEAP_TYPE type){auto heap=Heap(type);auto desc=Buffer(size);ComPtr<ID3D12Resource> r;Hr(device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,type==D3D12_HEAP_TYPE_UPLOAD?D3D12_RESOURCE_STATE_GENERIC_READ:D3D12_RESOURCE_STATE_COPY_DEST,nullptr,IID_PPV_ARGS(&r)),"host buffer");return r;}
+    ComPtr<ID3D12Resource> Graphics::Impl::Host(UINT64 size,D3D12_HEAP_TYPE type){auto heap=Heap(type);auto desc=Buffer(size);ComPtr<ID3D12Resource> r;GraphicsCheckHr(device.Get(),device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,&desc,type==D3D12_HEAP_TYPE_UPLOAD?D3D12_RESOURCE_STATE_GENERIC_READ:D3D12_RESOURCE_STATE_COPY_DEST,nullptr,IID_PPV_ARGS(&r)),"host buffer");return r;}
 
     void Graphics::Impl::CommandsInit(Commands& c,D3D12_COMMAND_LIST_TYPE type){Hr(device->CreateCommandAllocator(type,IID_PPV_ARGS(&c.allocator)),"command allocator create");ComPtr<ID3D12GraphicsCommandList> base;Hr(device->CreateCommandList(0,type,c.allocator.Get(),nullptr,IID_PPV_ARGS(&base)),"command list create");Hr(base.As(&c.list),"enhanced command list");Hr(c.list->Close(),"command list close");}
 
@@ -157,7 +157,18 @@ void DiagnosticLine(const char*) noexcept;
         DiagnosticLine(line);
     }
 
-    void Graphics::Impl::WaitStartup(QueueState& q){UINT64 v=q.Signal();HANDLE event=CreateEventW(nullptr,FALSE,FALSE,nullptr);if(!event)Fail("GPU event");Hr(q.fence->SetEventOnCompletion(v,event),"GPU completion");WaitForSingleObject(event,INFINITE);CloseHandle(event);}
+    void Graphics::Impl::WaitStartup(QueueState& q){
+        GraphicsCheckHr(device.Get(),device->GetDeviceRemovedReason(),"GPU before startup fence");
+        const UINT64 v=++q.serial;
+        GraphicsCheckHr(device.Get(),q.queue->Signal(q.fence.Get(),v),"GPU startup signal");
+        HANDLE event=CreateEventW(nullptr,FALSE,FALSE,nullptr);if(!event)Fail("GPU event");
+        const auto hr=q.fence->SetEventOnCompletion(v,event);
+        if(FAILED(hr)){CloseHandle(event);GraphicsCheckHr(device.Get(),hr,"GPU completion");}
+        const auto wait=WaitForSingleObject(event,INFINITE);CloseHandle(event);
+        GraphicsCheckHr(device.Get(),device->GetDeviceRemovedReason(),"GPU after startup fence");
+        const auto completed=q.fence->GetCompletedValue();
+        if(wait!=WAIT_OBJECT_0||completed==UINT64_MAX||completed<v)Fail("GPU startup fence invalid");
+    }
 
     DescriptorHandle Graphics::Impl::Srv(ID3D12Resource* r,uint32_t count,uint32_t stride,DescriptorHandle handle,UINT64 firstElement){if(handle.Valid())ReleaseDescriptor(handle);descriptorAllocator.Collect(CompletedFences());handle=descriptorAllocator.Allocate(ComPtr<ID3D12Resource>(r));uint32_t index=Physical(handle);D3D12_SHADER_RESOURCE_VIEW_DESC d{};d.Format=DXGI_FORMAT_UNKNOWN;d.ViewDimension=D3D12_SRV_DIMENSION_BUFFER;d.Buffer.FirstElement=firstElement;d.Shader4ComponentMapping=D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;d.Buffer.NumElements=r?count:1u;d.Buffer.StructureByteStride=stride;device->CreateShaderResourceView(r,&d,Cpu(index));return handle;}
 
