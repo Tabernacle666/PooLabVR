@@ -258,6 +258,7 @@ public:
     void ReleaseForestMutation(uint64_t identity);
     bool Prepare(const FrameInput&);
     bool PrepareLoading(const XRFrame&,std::atomic<uint32_t>&,const std::atomic<bool>&);
+    bool WarmLoadingFrame(XRFrame&,std::atomic<uint32_t>&,const std::atomic<bool>&);
     void Render(XRFrame&,const GpuProducerCoordinator& coordinator={});
     void WaitIdle();
     void RequestCapture(const std::wstring& path);

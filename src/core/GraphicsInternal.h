@@ -839,6 +839,12 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     bool PrepareLoading(const XRFrame&,std::atomic<uint32_t>&,const std::atomic<bool>&);
     bool forestLoading{},forestPrewarmDone{},forestPrewarmComplete{};
     uint64_t forestPrewarmRevision{};
+    // Startup uses the real render graph, but never an OpenXR-owned image.
+    bool forestWarmRender{},forestWarmStarted{};
+    uint32_t forestWarmSlots{},forestWarmRTV{Invalid},forestWarmDSV{Invalid};
+    ComPtr<ID3D12Resource> forestWarmColor,forestWarmDepth;
+    bool LoadingGeometrySettled(const XRFrame&,const GpuSceneCache*)const;
+    bool WarmLoadingFrame(XRFrame&,std::atomic<uint32_t>&,const std::atomic<bool>&);
     bool ValidateForestGeneration(ForestGeneration&,ForestBuildWork&);
     static void MatchForestShadowVariants(ForestGeneration&,const ForestGeneration*);
     void InvalidateForestShadows(Frame&,const GpuSceneCache*,const ForestGeneration*,const ForestGeneration*);

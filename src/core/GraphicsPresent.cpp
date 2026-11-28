@@ -3,7 +3,8 @@
 namespace OASIS {
     void Graphics::Impl::DrawPresentComposite(ID3D12GraphicsCommandList7* l,Frame& f,const XRFrame& xr,
                                               const uint32_t (&params)[4],const PresentComposite& options){
-        const auto target=Rtv(xrRTV[xr.color]),ds=Dsv(xrDSV[xr.depth]);
+        const auto target=Rtv(forestWarmRender?forestWarmRTV:xrRTV[xr.color]),
+            ds=Dsv(forestWarmRender?forestWarmDSV:xrDSV[xr.depth]);
         if(!outputSurface.desktop&&xr.presentRects[0].extent.width>0){
             // The scene buffers stay cropped. Only the acquired swapchain
             // receives a full-surface constant clear and per-eye viewports.

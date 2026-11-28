@@ -117,6 +117,7 @@ public:
     bool BeginFrame(XRFrame&,double* waitMilliseconds=nullptr,bool pollControllers=true);
     void InitializeLoading(ID3D12Device*,ID3D12CommandQueue*);
     bool PresentLoading(uint32_t stage,XRFrame* sample=nullptr);
+    void AdvanceLoadingFrameSerial(uint64_t last){frameSerial_=std::max(frameSerial_,last);}
     XrCompositionLayerQuad LoadingLayer()const;
     void LocateLate(XRFrame&,const XRCaptureView* capture=nullptr);
     bool AcquireSwapchains(XRFrame&);void EndFrame(const XRFrame&);XrResult Haptic(const HapticEvent&);

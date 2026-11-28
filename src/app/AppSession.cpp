@@ -2077,34 +2077,73 @@ LoopResult RunVr(std::atomic<bool>& stop,std::atomic<bool>& frameSeen,HWND windo
         }
         mappings.StartSolarSystem();
     }
-    // Freeze the initial viewpoint. Do not advance locomotion or benchmark
-    // time, or submit a world image until initial admission/prewarm finishes.
+    // Freeze a real startup viewpoint with the same diagnostic reference
+    // space and optical reach used by the live render. No benchmark clock
+    // is started by this sample or by any of the private warm frames.
     if(!scene.mg2ForestParts.empty()){
         XRFrame startupFrame;
-        while(!xr.ExitRequested()&&!stop.load(std::memory_order_relaxed)){
-            xr.PollEvents();
-            if(xr.Running()&&xr.PresentLoading(1u,&startupFrame)&&startupFrame.tracked)break;
-            MarkDiagnosticStartupProgress();Sleep(1);
-        }
-        if(xr.ExitRequested()||stop.load(std::memory_order_relaxed))return LoopResult::Exit;
+        float startupResidencyReach=0.f;
+        const auto sampleLoadingPose=[&]{
+            while(!xr.ExitRequested()&&!stop.load(std::memory_order_relaxed)){
+                xr.PollEvents();
+                if(xr.ExitRequested())return false;
+                if(xr.Running()&&xr.BeginFrame(startupFrame,nullptr,false)){
+                    const auto& actions=StandardVrActions();
+                    if(fixedDiagnosticFraming&&!(shuttleCalibration&&shuttle.Active()))
+                        ApplyOasisDiagnosticControllers(startupFrame.input,actions,sphereDiagnostic);
+                    if(sunTest||prismTest)ApplyOasisDiagnosticControllers(startupFrame.input,actions,true);
+                    startupFrame.headLockedDiagnostic=sphereDiagnostic||buildingTour.has_value()||sunTest||sessionTour||prismTest;
+                    if(buildingTour)buildingTour->PoseForFrame(startupFrame,building->Pilot());
+                    startupFrame.orbit=orbit.Display();
+                    startupResidencyReach=startupFrame.input.farClipMeters;
+                    if(building&&scene.solarSystem)building->AtmosphereContext(startupFrame.input);
+                    if(building&&scene.solarSystem&&!automated&&!buildingTour&&!sessionTour&&!sunTest&&(!prismTest||lodTest)&&!targetMode)
+                        startupFrame.input.farClipMeters=building->OpticalFarMeters(startupFrame.input.head.p,startupResidencyReach);
+                    if(startupFrame.render)xr.LocateLate(startupFrame);
+                    const bool tracked=startupFrame.render&&startupFrame.tracked;
+                    // Submit only the existing loading quad, never a world
+                    // image or a held projection swapchain during this sample.
+                    xr.EndFrame(startupFrame);
+                    if(tracked)return true;
+                }
+                MarkDiagnosticStartupProgress();Sleep(1);
+            }
+            return false;
+        };
+        if(!sampleLoadingPose())return LoopResult::Exit;
         const auto warmStart=QpcCounter();
+        const auto updateStartupWorld=[&]{
+            if(building){
+                const auto& local=startupFrame.input;
+                building->Tick(world,local.head,0.f,startupResidencyReach,graphics);
+                graphics.SetBuildingRevision(building->Revision(),building->Lights());
+            }
+            world.SetViewer(startupFrame.input.head.p.x,startupFrame.input.head.p.z);
+        };
         auto warmTask=std::async(std::launch::async,[&]{
             while(!cancelLoading.load(std::memory_order_acquire)){
-                if(building){
-                    const auto& local=startupFrame.input;
-                    building->Tick(world,local.head,0.f,local.farClipMeters,graphics);
-                    graphics.SetBuildingRevision(building->Revision(),building->Lights());
-                }
-                world.SetViewer(startupFrame.input.head.p.x,startupFrame.input.head.p.z);
+                updateStartupWorld();
                 if(graphics.PrepareLoading(startupFrame,loadingStage,cancelLoading))return;
                 Sleep(1);
             }
         });
         if(!awaitLoading(warmTask))return LoopResult::Exit;
-        char line[160];std::snprintf(line,sizeof(line),"lod24_loading_finished ms=%.1f world_submitted=0\r\n",
+        // Refresh the real view after a potentially long prewarm. The
+        // session owner alone samples OpenXR; the worker owns graphics.
+        if(!sampleLoadingPose())return LoopResult::Exit;
+        auto admissionTask=std::async(std::launch::async,[&]{
+            while(!cancelLoading.load(std::memory_order_acquire)){
+                updateStartupWorld();
+                if(graphics.WarmLoadingFrame(startupFrame,loadingStage,cancelLoading))return;
+                Sleep(1);
+            }
+        });
+        if(!awaitLoading(admissionTask))return LoopResult::Exit;
+        xr.AdvanceLoadingFrameSerial(startupFrame.input.frameId);
+        char line[160];std::snprintf(line,sizeof(line),"lod24_loading_finished ms=%.1f operational_complete=1 world_submitted=0\r\n",
             1000.*QpcSeconds(QpcCounter()-warmStart));DiagnosticLine(line);
     }
-    if(xr.Running())xr.PresentLoading(6u);
+    if(xr.Running())xr.PresentLoading(7u);
     MarkDiagnosticStartupProgress();
     DiagnosticLine("etape=attente_image\r\n");FlushDiagnostic();
     int64_t menuClick=0;bool finishCapture=false,exitInitiated=false;

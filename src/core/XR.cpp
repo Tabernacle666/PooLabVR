@@ -66,10 +66,10 @@ void XR::Swapchains(){uint32_t n=0;Xr(xrEnumerateViewConfigurationViews(instance
         (std::tan(.87909295f)+std::tan(.84459636f)));
     Xr(xrEnumerateSwapchainFormats(session_,0,&n,nullptr),"formats");std::vector<int64_t> f(n);Xr(xrEnumerateSwapchainFormats(session_,n,&n,f.data()),"formats");auto has=[&](DXGI_FORMAT a){return std::find(f.begin(),f.end(),int64_t(a))!=f.end();};format_=has(DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)?DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;if(!has(format_)||!has(DXGI_FORMAT_D32_FLOAT))Fail("sRGB + D32_FLOAT swapchains required");auto create=[&](XrSwapchain& sc,std::vector<XrSwapchainImageD3D12KHR>& out,DXGI_FORMAT format,XrSwapchainUsageFlags usage){XrSwapchainCreateInfo c{XR_TYPE_SWAPCHAIN_CREATE_INFO};c.usageFlags=usage;c.format=format;c.sampleCount=1;c.width=submitWidth_;c.height=submitHeight_;c.faceCount=1;c.arraySize=viewCount_;c.mipCount=1;Xr(xrCreateSwapchain(session_,&c,&sc),"swapchain array");uint32_t count=0;Xr(xrEnumerateSwapchainImages(sc,0,&count,nullptr),"swapchain images");out.resize(count,{XR_TYPE_SWAPCHAIN_IMAGE_D3D12_KHR});Xr(xrEnumerateSwapchainImages(sc,count,&count,reinterpret_cast<XrSwapchainImageBaseHeader*>(out.data())),"swapchain images");};create(color_,colors_,format_,XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT|XR_SWAPCHAIN_USAGE_TRANSFER_SRC_BIT);create(depth_,depths_,DXGI_FORMAT_D32_FLOAT,XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);}
 void XR::InitializeLoading(ID3D12Device* device,ID3D12CommandQueue* queue){
-    // One small static image with seven real milestone states. Re-submit
+    // One small static image with eight real milestone states. Re-submit
     // quad metadata throughout loading without touching busy scene queues.
     using Microsoft::WRL::ComPtr;
-    constexpr LONG W=512,H=128,Stages=7;
+    constexpr LONG W=512,H=128,Stages=8;
     XrSwapchainCreateInfo c{XR_TYPE_SWAPCHAIN_CREATE_INFO};
     c.createFlags=XR_SWAPCHAIN_CREATE_STATIC_IMAGE_BIT;
     c.usageFlags=XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
@@ -129,7 +129,7 @@ void XR::InitializeLoading(ID3D12Device* device,ID3D12CommandQueue* queue){
 XrCompositionLayerQuad XR::LoadingLayer()const{
     XrCompositionLayerQuad layer{XR_TYPE_COMPOSITION_LAYER_QUAD};
     layer.space=viewSpace_;layer.eyeVisibility=XR_EYE_VISIBILITY_BOTH;
-    layer.subImage={loading_,{{0,int32_t(std::min(loadingStage_,6u)*128u)},{512,128}},0};
+    layer.subImage={loading_,{{0,int32_t(std::min(loadingStage_,7u)*128u)},{512,128}},0};
     layer.pose.orientation.w=1.f;layer.pose.position.z=-1.4f;
     layer.size={1.0f,.25f};
     return layer;
@@ -366,7 +366,7 @@ void XR::EndFrame(const XRFrame& f){
             DiagnosticLine(line);
         }
         missedStreak_=0;lastFailure_=XRFrameFailure::None;lastReused_=false;
-    }else if(f.render&&!f.captureOnly){
+    }else if(f.render&&!f.captureOnly&&!loading){
         ++missedStreak_;
         if(reuse)++reusedTotal_;else ++emptyTotal_;
         const auto failure=f.presentationFailure==XRFrameFailure::None?XRFrameFailure::Render:f.presentationFailure;

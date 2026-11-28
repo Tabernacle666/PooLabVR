@@ -36,7 +36,7 @@ namespace OASIS {
     bool Graphics::Impl::Prepare(const FrameInput& input) {
         if(!sceneLoaded)return false;
         ApplyMultisampling();
-        active=nullptr;std::array<UINT64,GraphQueueCount> completed={copy.fence->GetCompletedValue(),compute.fence->GetCompletedValue(),direct.fence->GetCompletedValue()};for(auto value:completed)if(value==UINT64_MAX){Hr(device->GetDeviceRemovedReason(),"D3D12 device removed");Fail("Invalid GPU completion fence");}
+        active=nullptr;std::array<UINT64,GraphQueueCount> completed={copy.fence->GetCompletedValue(),compute.fence->GetCompletedValue(),direct.fence->GetCompletedValue()};for(auto value:completed)if(value==UINT64_MAX){GraphicsCheckHr(device.Get(),device->GetDeviceRemovedReason(),"D3D12 device removed");GraphicsCheckHr(device.Get(),DXGI_ERROR_DEVICE_REMOVED,"Invalid GPU completion fence");}
         for(uint32_t i=0;i<3;i++){auto& candidate=frames[(frameNumber+i)%3];bool ready=true;for(uint32_t q=0;q<GraphQueueCount;q++)ready&=completed[q]>=candidate.queueFences[q];if(ready){active=&candidate;break;}}
         // A20: do not evaluate contributions or enumerate a scene when no
         // frame slot can be submitted. Do not wait on an in-flight frame.

@@ -830,6 +830,8 @@ void Graphics::Impl::ResetForest(){
     forestStageRevision=forestStageCheckedSerial=forestInitialCheckedSerial=0;
     forestStageOpen=forestStageReady=forestInitialReady=forestLoading=forestPrewarmDone=forestPrewarmComplete=false;
     forestPrewarmRevision=0;
+    forestWarmRender=forestWarmStarted=false;forestWarmSlots=0;
+    forestWarmColor.Reset();forestWarmDepth.Reset();forestWarmRTV=forestWarmDSV=Invalid;
     forestAdmissionSource=nullptr;forestAdmissionMissingTiles.clear();
     forestAdmissionStaticGeneration=0;
     forestAdmissionScanned=forestAdmissionStaticMissing=false;
@@ -2107,6 +2109,47 @@ bool Graphics::Impl::PrewarmForest(std::atomic<uint32_t>& progress,const std::at
     return retained;
 }
 
+bool Graphics::Impl::LoadingGeometrySettled(const XRFrame& xr,const GpuSceneCache* tiles)const{
+    // A request blocked by generation retirement is not an admitted view.
+    // Compare exactly the frozen input consumed by the selection shader.
+    // No camera tolerance or changed LOD error threshold.
+    const auto& selection=forestSelection;
+    if(!xr.viewCount||selection.eyeCount!=xr.viewCount||selection.nearPlane!=xr.input.SceneNearZ()||
+       selection.backend!=forestBuildBackend)return false;
+    for(uint32_t eye=0;eye<xr.viewCount;++eye){
+        const auto& fov=xr.fov[eye];
+        const float vertical=std::tan(fov.angleUp)-std::tan(fov.angleDown);
+        const float horizontal=std::tan(fov.angleRight)-std::tan(fov.angleLeft);
+        const float focal=std::max(horizontal>.01f?float(width)/horizontal:float(width)*.5f,
+                                   vertical>.01f?float(height)/vertical:float(height)*.5f);
+        const auto& a=selection.eyes[eye];const auto& b=xr.eyes[eye];const auto& m=selection.eyeMotion[eye];
+        if(a.x!=b.x||a.y!=b.y||a.z!=b.z||selection.focal[eye]!=focal||m.x!=0.f||m.y!=0.f||m.z!=0.f)return false;
+        for(uint32_t row=0;row<4;++row)for(uint32_t col=0;col<4;++col)
+            if(selection.vp[eye].m[row][col]!=xr.vp[eye].m[row][col])return false;
+    }
+    const uint32_t lodMask=(prismSceneMask&16u)&&(prismSceneMask&15u)!=15u?prismSceneMask:0u;
+    if(selection.lodSelectionMask!=lodMask)return false;
+    const auto* architecture=contributions.architecturePatrimony?
+        contributions.architecturePatrimony(contributions.context):nullptr;
+    return forestInitialReady&&forestResident&&forestHierarchy&&forestPrewarmDone&&
+        forestPrewarmRevision==forestHierarchy->Revision()&&
+        !territorialCatalog.blocked&&!territorialCatalog.completion.valid()&&
+        territorialCatalog.pending.empty()&&territorialCatalog.retired.empty()&&
+        (!architecture||architecture->Changes().empty())&&
+        !forestBuild.requested&&!forestSelection.requested&&!forestPending&&
+        !forestStageOpen&&forestMutationEntries.empty()&&!forestRequestFailed&&!forestRefreshSelection&&
+        forestSelection.pages==forestHierarchy&&
+        forestSelection.territorialRevision==territorialCatalog.activeRevision&&
+        forestSelection.parkedCut==territorialParkCut&&
+        forestSelection.stagedRevision==forestStageRevision&&
+        forestSelection.tileSource==tiles&&
+        (!tiles||(!tiles->ForestTileResetPending()&&tiles->ForestDirtyTiles().empty()))&&
+        forestSelection.staticCaptured&&forestSelection.staticGeneration==sceneCache.ContentGeneration()&&
+        (!forestHierarchy->RetiredClusters()||forestSelection.retiredGenerations==forestStatus.retiredGenerations)&&
+        territorialCoverageSerial==forestResident->serial&&
+        territorialCoverageRevision==territorialCatalog.activeRevision&&territorialCoverageSource==tiles;
+}
+
 bool Graphics::Impl::PrepareLoading(const XRFrame& xr,std::atomic<uint32_t>& progress,const std::atomic<bool>& cancel){
     if(forestParts.empty())return true;
     if(!diagnosticDxrEnabled)Fail("LOD24 mandatory MG2 admission requires DXR enabled");
@@ -2119,6 +2162,11 @@ bool Graphics::Impl::PrepareLoading(const XRFrame& xr,std::atomic<uint32_t>& pro
     auto& frame=frames[0];
     PrepareForestPages(frame,xr,tiles,true);
     const bool admitted=ForestPublicationReady(tiles);
+    // Use the exact same raster/ray territorial publication as Render.
+    // It can change the parked registry even when CLAS/BLAS are all cached.
+    // Keep the loading gate closed until a subsequent selection consumes it.
+    if(admitted&&forestPrewarmDone&&frame.forestRaster)
+        PrepareTerritorialFrame(frame,xr,tiles);
     frame.forestRaster.reset();
     managedMemory.EndFrame(SubmittedFences());descriptorAllocator.EndRecording(SubmittedFences());
     if(!admitted){
@@ -2145,11 +2193,106 @@ bool Graphics::Impl::PrepareLoading(const XRFrame& xr,std::atomic<uint32_t>& pro
         forestPrewarmDone=true;forestRefreshSelection=true;
         return false;
     }
-    if(forestSelection.pages!=forestHierarchy||forestSelection.territorialRevision!=territorialCatalog.activeRevision||
-       forestRefreshSelection)return false;
-    DiagnosticLine(forestPrewarmComplete?"lod24_world_gate ready=1 prewarm_complete=1\r\n":
-        "lod24_world_gate ready=1 prewarm_complete=0 cpu_catalog_retained=1\r\n");
+    if(!LoadingGeometrySettled(xr,tiles))return false;
+    // This is geometry admission only. The world gate belongs to the
+    // completed private render of every frame slot, not to cache readiness.
     progress.store(6u,std::memory_order_release);
+    return true;
+}
+
+bool Graphics::Impl::WarmLoadingFrame(XRFrame& sample,std::atomic<uint32_t>& progress,const std::atomic<bool>& cancel){
+    if(cancel.load(std::memory_order_acquire))return false;
+    const auto* tiles=contributions.residentTiles?contributions.residentTiles(contributions.context):nullptr;
+    // A fresh post-prewarm pose must go through the selection path once.
+    // If a publication changes either cut, settle again without rendering.
+    if(forestParts.empty())Fail("LOD24 operational admission without MG2 sources");
+    if(!forestWarmStarted||!LoadingGeometrySettled(sample,tiles)){
+        forestWarmSlots=0;
+        if(!PrepareLoading(sample,progress,cancel))return false;
+        forestWarmStarted=true;
+    }
+    if(!forestWarmColor){
+        const auto make=[&](ID3D12Resource* prototype,DXGI_FORMAT format,D3D12_RESOURCE_FLAGS flags,
+                            D3D12_RESOURCE_STATES state,const wchar_t* name){
+            const auto original=prototype->GetDesc();
+            auto desc=Texture(UINT(original.Width),original.Height,format,1,original.DepthOrArraySize,1,flags);
+            const auto heap=Heap(D3D12_HEAP_TYPE_DEFAULT);
+            ComPtr<ID3D12Resource> result;
+            GraphicsCheckHr(device.Get(),device->CreateCommittedResource(&heap,D3D12_HEAP_FLAG_NONE,
+                &desc,state,nullptr,IID_PPV_ARGS(&result)),"LOD24 private stereo target");
+            result->SetName(name);return result;
+        };
+        forestWarmColor=make(outputSurface.colors.front(),colorFormat,D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET,
+            D3D12_RESOURCE_STATE_RENDER_TARGET,L"OASIS.LOD24.PrivateColor");
+        forestWarmDepth=make(outputSurface.depths.front(),DXGI_FORMAT_D32_FLOAT,D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL,
+            D3D12_RESOURCE_STATE_DEPTH_WRITE,L"OASIS.LOD24.PrivateDepth");
+        forestWarmRTV=MakeRTV(forestWarmColor.Get(),colorFormat,forestWarmRTV);
+        forestWarmDSV=MakeDSV(forestWarmDepth.Get(),forestWarmDSV);
+    }
+    // The sampled view and simulation time are frozen. Only the render
+    // identity advances so GPU publications and diagnostics stay unique.
+    auto frame=sample;
+    frame.input.frameId=++sample.input.frameId;
+    frame.ready=true;frame.submitted=false;frame.begun=false;
+    if(!Prepare(frame.input))return false;
+    const auto slot=uint32_t(active-frames.data());
+    const auto serial=forestResident->serial;
+    const auto requests=forestStatus.scheduleRequests;
+    const auto start=QpcCounter();
+    forestWarmRender=true;
+    try{Render(frame,{});}catch(...){forestWarmRender=false;throw;}
+    forestWarmRender=false;
+    if(!frame.submitted){
+        forestWarmSlots=0;
+        return false;
+    }
+    // No overlapping startup frames and no unfinished producer. The XR
+    // session thread continues to submit its independent loading quad.
+    WaitStartup(direct);WaitStartup(compute);WaitStartup(copy);
+    GraphicsCheckHr(device.Get(),device->GetDeviceRemovedReason(),"LOD24 private frame completion");
+    const auto& completed=frames[slot];
+    const bool rayReady=!completed.rayInstanceCount||
+        (completed.tlasBuilt&&completed.forestTlas==forestResident&&
+         completed.territorialTlasCut==territorialRayCut);
+    const bool stable=LoadingGeometrySettled(frame,tiles)&&forestResident->serial==serial&&
+        forestStatus.scheduleRequests==requests&&completed.forestRaster==forestResident&&
+        completed.territorialCut==territorialFrameCut&&completed.territorialRayCut==territorialRayCut&&rayReady;
+    if(stable)forestWarmSlots|=1u<<slot;
+    else forestWarmSlots=0;
+    // A later slot may expose a raster-only cut change without changing
+    // the parked intersection. Recheck all earlier slots against the
+    // current immutable owners, not just the number of completed renders.
+    for(uint32_t i=0;i<frames.size();++i)if(forestWarmSlots&(1u<<i)){
+        const auto& prior=frames[i];
+        if(prior.forestRaster!=forestResident||prior.territorialCut!=territorialFrameCut||
+           prior.territorialRayCut!=territorialRayCut||
+           (prior.rayInstanceCount&&(!prior.tlasBuilt||prior.forestTlas!=forestResident||
+                                     prior.territorialTlasCut!=territorialRayCut)))
+            forestWarmSlots&=~(1u<<i);
+    }
+    DXGI_QUERY_VIDEO_MEMORY_INFO local{},nonlocal{};
+    if(adapter){adapter->QueryVideoMemoryInfo(0,DXGI_MEMORY_SEGMENT_GROUP_LOCAL,&local);
+        adapter->QueryVideoMemoryInfo(0,DXGI_MEMORY_SEGMENT_GROUP_NON_LOCAL,&nonlocal);}
+    char line[512];std::snprintf(line,sizeof(line),
+        "lod24_operational_frame slot=%u slots=0x%x serial=%llu stable=%u ray_ready=%u ptlas=%u ray_slots=%u ms=%.1f active=%zu parked=%zu local_usage=%llu local_budget=%llu nonlocal_usage=%llu\n",
+        slot,forestWarmSlots,(unsigned long long)serial,unsigned(stable),unsigned(rayReady),
+        unsigned(completed.tlasPartitioned),completed.rayInstanceCount,1000.*QpcSeconds(QpcCounter()-start),
+        forestSelection.registry.size(),forestSelection.parkedRegistry.size(),
+        (unsigned long long)local.CurrentUsage,(unsigned long long)local.Budget,(unsigned long long)nonlocal.CurrentUsage);
+    DiagnosticLine(line);
+    if(forestWarmSlots!=((1u<<frames.size())-1u))return false;
+    if(cancel.load(std::memory_order_acquire))return false;
+    // All slot-local TLAS and their immutable owners are GPU-complete.
+    // The private outputs were never acquired from or submitted to OpenXR.
+    forestWarmColor.Reset();forestWarmDepth.Reset();
+    sceneTimeOriginValid=false;
+    lastDisplayTime=0;
+    std::snprintf(line,sizeof(line),
+        "lod24_world_gate ready=1 prewarm_complete=%u operational_complete=1 slots=0x%x serial=%llu active=%zu parked=%zu pending=0 world_submitted=0\n",
+        unsigned(forestPrewarmComplete),forestWarmSlots,(unsigned long long)serial,
+        forestSelection.registry.size(),forestSelection.parkedRegistry.size());
+    DiagnosticLine(line);
+    progress.store(7u,std::memory_order_release);
     forestLoading=false;
     return true;
 }

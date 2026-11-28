@@ -34,7 +34,9 @@ float Halton(uint32_t index,uint32_t base){
         startupFences("begin");
         const bool firstMg2Render=!forestInitialReady&&!forestStatus.scheduleRequests;
         if(firstMg2Render)StartupCheckpoint("lod22_render_enter_impl");
-        const bool measureRender=developerMode||dlssDiagnosticEnabled||sphereBaselineTiming||depthDiagnosticEnabled;
+        // Startup renders are not benchmark samples; still use the same
+        // real scene graph, geometry, raster and DXR paths.
+        const bool measureRender=!forestWarmRender&&(developerMode||dlssDiagnosticEnabled||sphereBaselineTiming||depthDiagnosticEnabled);
         const int64_t cpuRenderStart=measureRender?QpcCounter():0;
         forestStatus.traceRenderFrame=outputFrame.input.frameId;
         forestStatus.traceResidentMs=forestStatus.traceForestMs=forestStatus.traceRayMs=forestStatus.traceGraphMs=0.f;
@@ -99,6 +101,17 @@ float Halton(uint32_t index,uint32_t base){
             outputFrame.presentationFailure=XRFrameFailure::Prepare;return;
         }
         PrepareTerritorialFrame(*active,outputFrame,tileCatalog);
+        if(forestWarmRender&&!LoadingGeometrySettled(outputFrame,tileCatalog)){
+            // Visuals/Prepare may have exposed a new scene revision. Do
+            // not overlap its MG2 producer with an admission render.
+            if(coordinator.finishFallback)coordinator.finishFallback();
+            CancelReservedStreams();
+            managedMemory.EndFrame(SubmittedFences());
+            descriptorAllocator.EndRecording(SubmittedFences());
+            active=nullptr;historyReady=false;
+            outputFrame.presentationFailure=XRFrameFailure::Prepare;
+            return;
+        }
         forestStatus.traceForestMs=traceMs(forestTraceStart);
         for(auto* domain:domainRegistry)domain->BeginFrame(outputFrame.input.frameId);
         auto endDomains=[&]{for(auto* domain:domainRegistry)domain->EndFrame();managedMemory.EndFrame(SubmittedFences());descriptorAllocator.EndRecording(SubmittedFences());};
@@ -546,7 +559,8 @@ float Halton(uint32_t index,uint32_t base){
             passPlan.clusteredLights=f.lightCount>DirectLightLimit;
             passPlan.reflections=temporalReflections;
             passPlan.shadowAtlas=f.hasShadowAtlasLights;
-            passPlan.rayQueries=allowDxr&&!sphereProxy&&(temporalReflections||f.hasShadowedLights||cutActive||roomProbe.dispatchCount);
+            passPlan.rayQueries=allowDxr&&!sphereProxy&&(temporalReflections||f.hasShadowedLights||cutActive||
+                roomProbe.dispatchCount||(forestWarmRender&&f.rayInstanceCount>0));
             if(!passPlan.rayQueries&&f.forestTlas&&f.forestTlas!=f.forestRaster){
                 f.tlasBuilt=false;
                 // The old descriptors may still contain retired MG2 addresses.
@@ -2982,7 +2996,7 @@ float Halton(uint32_t index,uint32_t base){
             if(useDlss)dlssStatus=dlssPresented?uint32_t(std::lround(1000.f*float(renderWidth)/float(width))):Invalid;
             if(dlssPresented)TransitionDlssOutputs(l,D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
                                                    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-            auto* output=xrColorTargets[xr.color].Get();
+            auto* output=forestWarmRender?forestWarmColor.Get():xrColorTargets[xr.color].Get();
             D3D12_TEXTURE_BARRIER displayBarrier{};
             D3D12_BARRIER_GROUP displayGroup{};displayGroup.Type=D3D12_BARRIER_TYPE_TEXTURE;displayGroup.NumBarriers=1;displayGroup.pTextureBarriers=&displayBarrier;
             if(outputSurface.desktop){
@@ -3002,7 +3016,7 @@ float Halton(uint32_t index,uint32_t base){
             }
             if(viewModels)DrawVrViewModels(l,viewModels);
             timeDirectPass(l,DirectGpuPass::Present,true);
-            RecordCapture(l,output);
+            if(!forestWarmRender)RecordCapture(l,output);
             if(outputSurface.desktop){
                 displayBarrier.SyncBefore=D3D12_BARRIER_SYNC_ALL;displayBarrier.SyncAfter=D3D12_BARRIER_SYNC_NONE;
                 displayBarrier.AccessBefore=D3D12_BARRIER_ACCESS_RENDER_TARGET;displayBarrier.AccessAfter=D3D12_BARRIER_ACCESS_NO_ACCESS;
