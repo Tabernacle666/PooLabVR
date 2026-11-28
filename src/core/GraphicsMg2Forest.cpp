@@ -879,7 +879,7 @@ void Graphics::Impl::ResetForest(){
     forestSourcePool.Reset();
     forestHierarchy.reset();
     forestParts.clear();
-    forestCameraSampleEyes={};
+    forestCameraSampleEyes={};architectureEyeMotion={};
     forestCameraSampleAt=0;
     forestCameraSampleCount=0;
     forestRefreshSelection=forestRetryUsed=false;
@@ -1247,9 +1247,10 @@ void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneC
                 work.inFlight?work.inFlight->size():0u,static_cast<unsigned long long>(candidate.triangles),forestHierarchy->PageCount());
             DiagnosticLine(line);
             if(candidate.architectureBefore){
-                std::snprintf(line,sizeof(line),"lod22_arch_bake source_cut_triangles=%llu authored_triangles=%llu cache_hits=%llu cache_writes=%llu indexed_meshlets=1\r\n",
+                std::snprintf(line,sizeof(line),"lod22_arch_bake source_cut_triangles=%llu authored_triangles=%llu hidden_contact_triangles=%llu cache_hits=%llu cache_writes=%llu indexed_meshlets=1\r\n",
                     static_cast<unsigned long long>(candidate.architectureBefore),
                     static_cast<unsigned long long>(candidate.architectureAfter),
+                    static_cast<unsigned long long>(candidate.architectureContacts),
                     static_cast<unsigned long long>(candidate.architectureCacheHits),
                     static_cast<unsigned long long>(candidate.architectureCacheWrites));
                 DiagnosticLine(line);
@@ -1276,8 +1277,12 @@ void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneC
                 const float v=std::tan(fov.angleUp)-std::tan(fov.angleDown);
                 const float focal=std::max(h>.01f?float(width)/h:float(width)*.5f,
                     v>.01f?float(height)/v:float(height)*.5f);
-                const float d=Length(Sub(xr.eyes[eye],{node.sphere.x,node.sphere.y,node.sphere.z}));
-                const float distance=d-node.sphere.w-1.e-5f*(d+node.sphere.w+1.f);
+                const auto delta=Sub({node.sphere.x,node.sphere.y,node.sphere.z},xr.eyes[eye]);
+                const auto motion=architectureEyeMotion[eye];
+                const float travel2=Dot(motion,motion);
+                const float t=travel2>0.f?std::clamp(Dot(delta,motion)/travel2,0.f,1.f):0.f;
+                const float d=Length(Sub(delta,Scale(motion,t)));
+                const float distance=d-node.sphere.w-1.e-5f*(d+node.sphere.w+1.f+Length(motion));
                 if(distance<=xr.input.SceneNearZ()||error*focal>TerritorialRasterPixels*distance)return false;
             }
             return true;
@@ -1329,6 +1334,7 @@ void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneC
                     node->patches.front().center;
                 struct Group {
                     std::vector<Vertex> vertices;
+                    std::vector<size_t> boxStarts;
                     XMFLOAT3 lo{INFINITY,INFINITY,INFINITY},hi{-INFINITY,-INFINITY,-INFINITY};
                     float geometric{},optical{};
                 };
@@ -1347,6 +1353,8 @@ void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneC
                             if(p.material>=alphaModes.size()||alphaModes[p.material]!=0u)
                                 Fail("LOD22 architecture material changed");
                             auto& group=groups[{p.material,0u}];
+                            if((p.flags&StructuralBoxObject)&&source->second.size()==36u)
+                                group.boxStarts.push_back(group.vertices.size());
                             const auto matrix=Matrix(p.pose);
                             const auto rotation=Matrix(Pose{{},p.pose.q});
                             for(auto v:source->second){
@@ -1388,10 +1396,13 @@ void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneC
                 for(auto& [materialKind,group]:groups){
                     if(node->architecture){
                         const bool structural=(node->key.partition>>30u)!=3u;
+                        const auto contacts=structural?
+                            Mg2Pages::CullArchitectureBoxContacts(group.vertices,group.boxStarts):0u;
                         const auto reduction=Mg2Pages::ReduceArchitecture(group.vertices,
                             structural?0.f:node->architecture->error,structural);
                         group.geometric+=reduction.error;
-                        result.architectureBefore+=reduction.before;result.architectureAfter+=reduction.after;
+                        result.architectureBefore+=reduction.before+contacts;result.architectureAfter+=reduction.after;
+                        result.architectureContacts+=contacts;
                         result.architectureCacheHits+=reduction.cacheHit;result.architectureCacheWrites+=reduction.cacheWritten;
                     }
                     if(result.nextId<nativeMeshes||!result.nextId)
@@ -1610,8 +1621,15 @@ void Graphics::Impl::PrepareTerritorialFrame(Frame& f,const XRFrame& xr,const Gp
                 const float horizontal=std::tan(fov.angleRight)-std::tan(fov.angleLeft);
                 const float focal=std::max(horizontal>.01f?float(width)/horizontal:float(width)*.5f,
                                            vertical>.01f?float(height)/vertical:float(height)*.5f);
-                const float d=Length(Sub(xr.eyes[eye],{group.support.x,group.support.y,group.support.z}));
-                const float distance=d-group.support.w-1.e-5f*(d+group.support.w+1.f);
+                const auto delta=Sub({group.support.x,group.support.y,group.support.z},xr.eyes[eye]);
+                // Architectural cut admission mirrors the worker's swept
+                // stereo metric. Keep the existing vegetation policy intact.
+                const auto motion=group.key.first==TerritorialDomain::Architecture?
+                    architectureEyeMotion[eye]:XMFLOAT3{};
+                const float travel2=Dot(motion,motion);
+                const float t=travel2>0.f?std::clamp(Dot(delta,motion)/travel2,0.f,1.f):0.f;
+                const float d=Length(Sub(delta,Scale(motion,t)));
+                const float distance=d-group.support.w-1.e-5f*(d+group.support.w+1.f+Length(motion));
                 accept=distance>xr.input.SceneNearZ()&&group.error*focal<=errorPixels*distance;
             }
             if(accept){chosen.push_back(index);accepted.insert(group.key);}
@@ -2007,6 +2025,9 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     forestCameraSampleAt=cameraSampleAt;
     forestCameraSampleCount=xr.viewCount;
     for(uint32_t eye=0;eye<xr.viewCount;++eye)forestCameraSampleEyes[eye]=xr.eyes[eye];
+    const float architectureLookAhead=float(std::max(cameraDt,double(forestStatus.scheduleLeadMs)*.001));
+    for(uint32_t eye=0;eye<xr.viewCount;++eye)
+        architectureEyeMotion[eye]=Scale(cameraVelocity[eye],architectureLookAhead);
     bool publishedThisFrame=false;
     // A completed producer has finished its GPU fence, validation and cleanup.
     // The render thread transfers only the ready generation's ownership.

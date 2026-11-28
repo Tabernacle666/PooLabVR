@@ -642,7 +642,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::shared_ptr<const Mg2Pages> catalog;
         std::map<TerritorialCatalogKey,TerritorialCatalogNode> replacements;
         uint32_t nextId{};
-        uint64_t triangles{},architectureBefore{},architectureAfter{},architectureCacheHits{},architectureCacheWrites{};
+        uint64_t triangles{},architectureBefore{},architectureAfter{},architectureContacts{},architectureCacheHits{},architectureCacheWrites{};
     };
     struct TerritorialCatalogWork {
         std::future<TerritorialCatalogResult> completion;
@@ -801,7 +801,7 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     } forestRetire;
     bool forestShadowUsesMg2{};
     // Render-owner camera sampling and event-driven MG2 scheduling.
-    std::array<XMFLOAT3,MaxViews> forestCameraSampleEyes{};
+    std::array<XMFLOAT3,MaxViews> forestCameraSampleEyes{},architectureEyeMotion{};
     int64_t forestCameraSampleAt{};
     uint32_t forestCameraSampleCount{};
     bool forestRefreshSelection{},forestRetryUsed{};

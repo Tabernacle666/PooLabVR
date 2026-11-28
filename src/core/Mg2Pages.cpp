@@ -512,6 +512,93 @@ IndexedArchitecture IndexArchitecture(std::span<const Vertex> triangles){
     return result;
 }
 }
+uint64_t Mg2Pages::CullArchitectureBoxContacts(std::vector<Vertex>& vertices,
+        std::span<const size_t> boxStarts){
+    // Only exact full-face contacts between certified opaque closed boxes.
+    // Never weld an exposed UV seam, close an opening, or remove a partial
+    // overlap. Opposite outward normals prove the two box interiors occupy
+    // opposite half-spaces. The compound is only rendered from outside its
+    // conservative support; the original physical/RTX routes remain intact.
+    using FaceKey=std::tuple<unsigned,float,float,float,float,float>;
+    struct Face {size_t box{};std::array<size_t,2> triangles{};};
+    std::map<FaceKey,std::array<std::vector<Face>,2>> faces;
+    const auto coord=[](XMFLOAT3 p,unsigned k){return k==0u?p.x:k==1u?p.y:p.z;};
+    for(const size_t start:boxStarts){
+        if(start%3u||start>vertices.size()||vertices.size()-start<36u)
+            Fail("LOD22 structural box range");
+        std::array<float,3> lo{INFINITY,INFINITY,INFINITY},hi{-INFINITY,-INFINITY,-INFINITY};
+        bool valid=true;
+        for(size_t i=start;i<start+36u;++i)for(unsigned k=0;k<3u;++k){
+            const float p=coord(vertices[i].position,k);
+            if(!std::isfinite(p)){valid=false;break;}
+            lo[k]=std::min(lo[k],p);hi[k]=std::max(hi[k],p);
+        }
+        for(unsigned k=0;k<3u;++k)valid&=lo[k]<hi[k];
+        if(!valid)continue;
+        struct Side {std::array<size_t,2> triangles{};std::array<unsigned,2> masks{};unsigned count{};};
+        std::array<Side,6> sides{};
+        for(size_t i=start;i<start+36u&&valid;i+=3u){
+            const auto normal=vertices[i].normal;
+            unsigned axis=3u,sign=0u;
+            for(unsigned k=0;k<3u;++k){
+                const float n=coord(normal,k);
+                if(n==1.f||n==-1.f){
+                    if(axis!=3u){valid=false;break;}
+                    axis=k;sign=n>0.f;
+                }else if(n!=0.f){valid=false;break;}
+            }
+            if(!valid||axis==3u){valid=false;break;}
+            const unsigned u=(axis+1u)%3u,v=(axis+2u)%3u;
+            const float plane=sign?hi[axis]:lo[axis];
+            unsigned mask=0u;
+            for(size_t j=i;j<i+3u;++j){
+                const auto& vertex=vertices[j];
+                const auto p=vertex.position;
+                const float x=coord(p,u),y=coord(p,v);
+                if(coord(p,axis)!=plane||coord(vertex.normal,axis)!=(sign?1.f:-1.f)||
+                   coord(vertex.normal,u)!=0.f||coord(vertex.normal,v)!=0.f||
+                   (x!=lo[u]&&x!=hi[u])||(y!=lo[v]&&y!=hi[v])){valid=false;break;}
+                mask|=1u<<((x==hi[u]?1u:0u)|(y==hi[v]?2u:0u));
+            }
+            const auto a=vertices[i].position,b=vertices[i+1].position,c=vertices[i+2].position;
+            const double winding=(double(coord(b,u))-coord(a,u))*(double(coord(c,v))-coord(a,v))-
+                (double(coord(b,v))-coord(a,v))*(double(coord(c,u))-coord(a,u));
+            if(!valid||std::popcount(mask)!=3||!(sign?winding>0.:winding<0.)){valid=false;break;}
+            auto& side=sides[2u*axis+sign];
+            if(side.count>=2u){valid=false;break;}
+            side.triangles[side.count]=i/3u;side.masks[side.count++]=mask;
+        }
+        for(const auto& side:sides){
+            const auto shared=side.masks[0]&side.masks[1];
+            if(side.count!=2u||(side.masks[0]|side.masks[1])!=15u||
+               (shared!=9u&&shared!=6u))valid=false;
+        }
+        if(!valid)continue;
+        for(unsigned axis=0;axis<3u;++axis)for(unsigned sign=0;sign<2u;++sign){
+            const unsigned u=(axis+1u)%3u,v=(axis+2u)%3u;
+            FaceKey key{axis,sign?hi[axis]:lo[axis],lo[u],hi[u],lo[v],hi[v]};
+            faces[key][sign].push_back({start,sides[2u*axis+sign].triangles});
+        }
+    }
+    std::vector<uint8_t> removed(vertices.size()/3u);
+    uint64_t count=0;
+    for(const auto& [key,sides]:faces){
+        if(sides[0].size()!=1u||sides[1].size()!=1u||
+           sides[0][0].box==sides[1][0].box)continue;
+        for(const auto& side:sides)for(auto triangle:side.front().triangles){
+            if(removed.at(triangle))Fail("LOD22 duplicate box contact");
+            removed[triangle]=1u;++count;
+        }
+    }
+    if(count){
+        size_t target=0;
+        for(size_t t=0;t<removed.size();++t)if(!removed[t]){
+            for(unsigned j=0;j<3u;++j)vertices[target++]=vertices[t*3u+j];
+        }
+        vertices.resize(target);
+    }
+    return count;
+}
 Mg2Pages::ArchitectureReduction Mg2Pages::ReduceArchitecture(std::vector<Vertex>& triangles,
         float errorBudget,bool structural){
     ArchitectureReduction result;result.before=triangles.size()/3u;

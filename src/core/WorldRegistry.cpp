@@ -27,6 +27,12 @@ static GpuFloat4 Position(const XMFLOAT3& p) {
 static GpuFloat4 Rotation(const XMFLOAT4& q) {
     return {q.x,q.y,q.z,q.w};
 }
+static bool SameArchitectureGeometry(const GpuResidentTileObject& a,const GpuResidentTileObject& b){
+    return a.mesh==b.mesh&&a.material==b.material&&a.flags==b.flags&&a.enabled==b.enabled&&
+        std::memcmp(&a.position,&b.position,sizeof(GpuFloat4))==0&&
+        std::memcmp(&a.rotation,&b.rotation,sizeof(GpuFloat4))==0&&
+        std::memcmp(&a.scale,&b.scale,sizeof(GpuFloat4))==0;
+}
 static bool Valid(const WorldObject& o) {
     return std::isfinite(o.current.p.x)&&std::isfinite(o.current.p.y)&&
         std::isfinite(o.current.p.z)&&std::isfinite(o.previous.p.x)&&
@@ -205,6 +211,7 @@ std::vector<uint64_t> WorldRegistry::ApplyBatch(std::span<const Change> changes,
     std::map<GpuTileKey,TileEdits> edits;
     std::vector<std::pair<uint64_t,GpuTileKey>> moved;
     std::vector<uint64_t> crossing;
+    std::unordered_set<uint64_t> architectureGeometryChanges;
     for(uint64_t id:removed){
         if(auto owner=owners_.find(id);owner!=owners_.end())
             edits[owner->second].removed.insert(id);
@@ -217,6 +224,11 @@ std::vector<uint64_t> WorldRegistry::ApplyBatch(std::span<const Change> changes,
             Fail("World batch tries to update a removed object");
         const auto renderId=RenderId(change.identity);
         const auto record=Record(change.object,change.identity,renderId);
+        if(change.object.architecture.building||architecturePatrimony_.Entries().contains(change.identity)){
+            const auto& tile=cache_.ResidentTiles().at(owner->second);
+            if(!SameArchitectureGeometry(tile.objects.at(tile.byIdentity.at(change.identity)),record))
+                architectureGeometryChanges.insert(change.identity);
+        }
         if(forestAdmission_&&!forestAdmission_->ForestRouteReady(change.object,change.identity))
             Fail("MG2 mutation must be prepared with TryApplyBatch");
         const auto target=TileOf(change.object);
@@ -278,7 +290,8 @@ std::vector<uint64_t> WorldRegistry::ApplyBatch(std::span<const Change> changes,
     for(const auto& [id,key]:moved)owners_.insert_or_assign(id,key);
     for(const auto& change:changes)
         if(change.object.architecture.building||architecturePatrimony_.Entries().contains(change.identity))
-            architecturePatrimony_.Set(change.identity,change.object.architecture,change.object.flags);
+            architecturePatrimony_.Set(change.identity,change.object.architecture,change.object.flags,
+                architectureGeometryChanges.contains(change.identity));
     for(size_t i=0;i<objects.size();++i)if(objects[i].architecture.building)
         architecturePatrimony_.Set(identities[i],objects[i].architecture,objects[i].flags);
     nextIdentity_=identity;
@@ -301,6 +314,7 @@ bool WorldRegistry::Update(uint64_t id,const WorldObject& object) {
     const auto& oldTile=cache_.ResidentTiles().at(oldKey);
     const auto& old=oldTile.objects.at(oldTile.byIdentity.at(id));
     const auto updated=Record(object,id,old.renderId);
+    const bool architectureGeometryChanged=!SameArchitectureGeometry(old,updated);
     if(forestAdmission_&&!forestAdmission_->StageForestMutation(object,id))return false;
     const auto refresh=[&]{
         vegetationPatrimony_.InvalidateAt(id,object.mesh,object.material,object.current.p);
@@ -311,7 +325,7 @@ bool WorldRegistry::Update(uint64_t id,const WorldObject& object) {
         const bool changed=cache_.PatchTileObject(oldKey,id,updated);
         if(changed)refresh();
         if(object.architecture.building||architecturePatrimony_.Entries().contains(id))
-            architecturePatrimony_.Set(id,object.architecture,object.flags,changed);
+            architecturePatrimony_.Set(id,object.architecture,object.flags,architectureGeometryChanged);
         FinishForestMutation(id);
         return changed;
     }

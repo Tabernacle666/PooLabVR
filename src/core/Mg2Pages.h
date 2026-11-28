@@ -175,6 +175,7 @@ public:
     };
     struct ArchitectureReduction {float error{};uint64_t before{},after{};bool cacheHit{},cacheWritten{};};
     static ArchitectureReduction ReduceArchitecture(std::vector<Vertex>&,float errorBudget,bool structural);
+    static uint64_t CullArchitectureBoxContacts(std::vector<Vertex>&,std::span<const size_t> boxStarts);
     static Mg2Pages FromAuthoredTriangles(std::span<const AuthoredMesh>);
     // The same complete coarsest DAG cut as the individual GPU selector.
     // Error is the maximum child-group refinement error, in source units.

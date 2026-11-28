@@ -105,7 +105,9 @@ public:
         const auto key=Leaf(a,flags);
         if(auto it=entries_.find(route);it!=entries_.end()){
             if(it->second.leaf==key){
-                if(!geometryChanged&&it->second.attachment==a)return;
+                // Moving partitions never have a collective recipe. Their
+                // physical transforms remain authoritative in the world cache.
+                if((!geometryChanged||a.kind==ArchitectureKind::Mobile)&&it->second.attachment==a)return;
                 it->second.attachment=a;
                 for(auto k=key;;k=Parent(k)){
                     Touch(k,nodes_.at(k));
