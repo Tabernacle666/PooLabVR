@@ -7,6 +7,33 @@
 #include <shellapi.h>
 #include <thread>
 
+namespace {
+// Preserve the native crash (no recovery or suppression), but persist its
+// address and memory operation before Windows terminates the process.
+LONG WINAPI LogUnhandledFault(EXCEPTION_POINTERS* pointers) noexcept {
+    if(!pointers||!pointers->ExceptionRecord)return EXCEPTION_CONTINUE_SEARCH;
+    const auto& record=*pointers->ExceptionRecord;
+    MEMORY_BASIC_INFORMATION memory{};
+    char module[MAX_PATH]{};
+    const auto address=reinterpret_cast<uintptr_t>(record.ExceptionAddress);
+    uintptr_t base=0;
+    if(VirtualQuery(record.ExceptionAddress,&memory,sizeof(memory))){
+        base=reinterpret_cast<uintptr_t>(memory.AllocationBase);
+        GetModuleFileNameA(reinterpret_cast<HMODULE>(base),module,MAX_PATH);
+        module[MAX_PATH-1]='\0';
+    }
+    const bool access=record.ExceptionCode==EXCEPTION_ACCESS_VIOLATION&&record.NumberParameters>=2;
+    char line[768];
+    std::snprintf(line,sizeof(line),
+        "native_fault code=0x%08lx thread=%lu module=%.260s instruction=0x%llx rva=0x%llx operation=%llu target=0x%llx\r\n",
+        static_cast<unsigned long>(record.ExceptionCode),static_cast<unsigned long>(GetCurrentThreadId()),module,
+        static_cast<unsigned long long>(address),static_cast<unsigned long long>(base?address-base:0),
+        access?static_cast<unsigned long long>(record.ExceptionInformation[0]):0ull,
+        access?static_cast<unsigned long long>(record.ExceptionInformation[1]):0ull);
+    OASIS::DiagnosticLine(line);OASIS::FlushDiagnostic();
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+}
 int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
     std::wstring worldPath,diagnosticDirectory;
     bool interactive=false,desktop=false,automatedDlss=false;
@@ -61,6 +88,7 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int) {
         if(!automatedDlss&&!sphereDiagnostic)MessageBoxW(nullptr,message.c_str(),L"OASIS",MB_OK|MB_ICONERROR);
         return 1;
     }
+    if(!diagnosticDirectory.empty())SetUnhandledExceptionFilter(LogUnhandledFault);
     if(!diagnosticDirectory.empty())
         OASIS::DiagnosticLine(mg2?"diagnostic=mg2\r\n":buildingLoop?"diagnostic=megastructure\r\n":shuttleCalibration?"diagnostic=navette\r\n":
             passageCalibration?"diagnostic=franchissement\r\n":solarCalibration?"diagnostic=systeme_solaire\r\n":

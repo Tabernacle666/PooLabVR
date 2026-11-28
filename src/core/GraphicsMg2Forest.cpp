@@ -1130,6 +1130,8 @@ void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneC
     // expensive individual generation. Both workers own immutable snapshots.
     if(!forestHierarchy)return;
     auto& work=territorialCatalog;
+    const bool initialTrace=!forestInitialReady&&!forestStatus.scheduleRequests;
+    if(initialTrace)StartupCheckpoint("lod22_catalog_enter");
     const auto retireActive=[&](const TerritorialCatalogKey& key){
         if(auto it=work.active.find(key);it!=work.active.end()){
             for(const auto& rep:it->second.representations)work.retired.insert(rep.mesh);
@@ -1171,6 +1173,7 @@ void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneC
         }
         if(patrimony&&patrimony->HasChanges())accept(patrimony->TakeChanges());
     }
+    if(initialTrace)StartupCheckpoint("lod22_catalog_vegetation_snapshot_ready");
     // Architecture uses the same catalog transaction but has semantic
     // parentage. Do not compete with mandatory initial vegetation admission.
     auto* architecture=contributions.architecturePatrimony?
@@ -1186,6 +1189,7 @@ void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneC
         work.architectureSource=architecture;work.blocked=false;
         if(architecture)architecture->MarkAll();
     }
+    if(initialTrace)StartupCheckpoint("lod22_catalog_architecture_binding_ready");
     if(architecture&&tiles&&forestInitialReady&&!architecture->Changes().empty()){
         std::vector<uint32_t> modes;modes.reserve(surfaceData.size());
         for(const auto& surface:surfaceData)modes.push_back(surface.extra.y);
@@ -1314,6 +1318,7 @@ void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneC
     auto retired=std::make_shared<std::vector<uint32_t>>(work.retired.begin(),work.retired.end());
     batch->swap(work.pending);work.inFlight=batch;
     work.retired.clear();work.inFlightRetired=retired;
+    if(initialTrace)StartupCheckpoint("lod22_catalog_worker_launch");
     try{
         work.completion=std::async(std::launch::async,[base=forestHierarchy,batch,retired,
             nextId=work.nextId,nativeMeshes=meshes.ranges.size(),alphaModes=std::move(alphaModes)]() mutable {
@@ -1829,13 +1834,13 @@ bool Graphics::Impl::StageForestMutation(const WorldObject& o,uint64_t id){
     entry.rotation={o.current.q.x,o.current.q.y,o.current.q.z,o.current.q.w};
     entry.scale={o.scale.x,o.scale.y,o.scale.z,0.f};
     forestMutationEntries.insert_or_assign(id,entry);++forestStageRevision;
-    DiagnosticLine("lod23_mutation_stage pending=1\r\n");
+    // Report the batch when the registry captures it, not one line per route.
     return false;
 }
 void Graphics::Impl::ReleaseForestMutation(uint64_t id){
     if(forestMutationEntries.empty()||!forestMutationEntries.erase(id))return;
     ++forestStageRevision;
-    DiagnosticLine("lod23_mutation_release\r\n");
+    // Release is reflected in the next staged-registry batch report.
 }
 
 bool Graphics::Impl::ForestRouteRequired(uint32_t mesh,uint32_t flags,float sx,float sy,float sz)const{
@@ -2069,7 +2074,10 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             forestBuild.candidate.reset();
         }
     }
+    const bool initialTrace=!forestInitialReady&&!forestStatus.scheduleRequests;
+    if(initialTrace)StartupCheckpoint("lod22_mg2_catalog_enter");
     PrepareTerritorialCatalog(xr,tiles);
+    if(initialTrace)StartupCheckpoint("lod22_mg2_catalog_return");
     if(forestPending&&forestBuildQueue.fence->GetCompletedValue()>=forestPending->fence){
         // A producer snapshot can predate a mutation/reappearance. Never
         // withdraw a route still required by the current physical world.
@@ -2163,6 +2171,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         it=forestGenerations.erase(it);
     }
     forestStatus.traceForestRetireMs=float(1000.*QpcSeconds(QpcCounter()-retireStart));
+    if(initialTrace)StartupCheckpoint("lod22_mg2_retirement_ready");
     const bool canPublish=nativeCampus||forestStageOpen||!forestMutationEntries.empty();
     if(canPublish)f.forestRaster=forestResident;
 
@@ -2472,6 +2481,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
     forestRetryAvailable=available;
     forestRetryRetired=forestStatus.retiredGenerations;
     const auto requestStart=QpcCounter();
+    if(initialTrace)StartupCheckpoint("lod22_mg2_registry_enter");
     // Only refresh changed territorial records; the previous worker has
     // already been joined above. No live scene references cross the boundary.
     const auto covered=[&](uint64_t id){
@@ -2575,6 +2585,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         }
         tiles->CommitForestTiles();
     }
+    if(initialTrace)StartupCheckpoint("lod22_mg2_resident_registry_ready");
     if(stageChanged){
         const auto stage=[&](const Mg2GpuRegistryEntry& entry){
             // A staged replacement can have the same identity as a live
@@ -2586,7 +2597,12 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         for(const auto& entry:forestStagedEntries)stage(entry);
         for(const auto& [id,entry]:forestMutationEntries)stage(entry);
         selection.stagedRevision=forestStageRevision;
+        char line[256];std::snprintf(line,sizeof(line),
+            "lod23_mutation_stage pending=%zu growth=%zu registry_staged=%zu revision=%llu\r\n",
+            forestMutationEntries.size(),forestStagedEntries.size(),selection.stagedInputs.size(),
+            static_cast<unsigned long long>(forestStageRevision));DiagnosticLine(line);
     }
+    if(initialTrace)StartupCheckpoint("lod22_mg2_staged_registry_ready");
     selection.tileSource=tiles;
     // Reconcile coverage only at a cut/generation change. The last
     // published generation supplies an exact fallback variant; if a route
@@ -2626,6 +2642,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
         selection.staticGeneration=sceneCache.ContentGeneration();
         selection.staticCaptured=true;
     }
+    if(initialTrace)StartupCheckpoint("lod22_mg2_static_registry_ready");
     selection.lodSelectionMask=lodMask;
     if(lodMaskChanged){
         char line[192];std::snprintf(line,sizeof(line),"lod_mg2_mask=%u registry_instances=%zu mask_independent_cut=1\r\n",lodMask,selection.registry.size());DiagnosticLine(line);

@@ -32,6 +32,8 @@ float Halton(uint32_t index,uint32_t base){
             DiagnosticLine(line);
         };
         startupFences("begin");
+        const bool firstMg2Render=!forestInitialReady&&!forestStatus.scheduleRequests;
+        if(firstMg2Render)StartupCheckpoint("lod22_render_enter_impl");
         const bool measureRender=developerMode||dlssDiagnosticEnabled||sphereBaselineTiming||depthDiagnosticEnabled;
         const int64_t cpuRenderStart=measureRender?QpcCounter():0;
         forestStatus.traceRenderFrame=outputFrame.input.frameId;
@@ -69,9 +71,11 @@ float Halton(uint32_t index,uint32_t base){
             }
             CollectGpuTimings();
         }
+        if(firstMg2Render)StartupCheckpoint("lod22_render_timers_ready");
         if(outputFrame.viewCount!=viewCount||!outputFrame.viewCount||outputFrame.viewCount>MaxViews)Fail("XR view topology changed after Graphics configuration");
         if(outputFrame.color>=xrRTV.size()||outputFrame.depth>=xrDSV.size())Fail("Output image index out of range");
         publicationCatalog.Clear();publications.clear();descriptorAllocator.BeginRecording();managedMemory.BeginFrame();CollectManaged();residency.Begin();vramCache.RequireActive();
+        if(firstMg2Render)StartupCheckpoint("lod22_render_resources_ready");
         // Fix the geometry generation and CPU render ordinals before the
         // external domains reserve their ranges. Independent cuts share
         // immutable geometry and separate transform/suppression ranges.
@@ -80,7 +84,9 @@ float Halton(uint32_t index,uint32_t base){
         const GpuSceneCache* tileCatalog=contributions.residentTiles?
             contributions.residentTiles(contributions.context):nullptr;
         const auto forestTraceStart=traceClock();
+        if(firstMg2Render)StartupCheckpoint("lod22_render_mg2_enter");
         PrepareForestPages(*active,outputFrame,tileCatalog,active->cpuCount!=0u||!forestParts.empty());
+        if(firstMg2Render)StartupCheckpoint("lod22_render_mg2_return");
         if(!ForestPublicationReady(tileCatalog)){
             // No native substitute, including a mutation outside growth.
             // Such an unstaged mutation blocks submission until its route
