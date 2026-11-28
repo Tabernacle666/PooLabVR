@@ -398,6 +398,23 @@ float3 PairMarks(Out i,float3 color){
 
 #include "target_hud.hlsli"
 
+// Stable world-space ecology for the flat, forested extension. The authored
+// atlas remains authoritative wherever its original habitat has coverage.
+uint ExtensionFogHash(uint n){
+    n^=n>>16u;n*=0x7feb352du;n^=n>>15u;n*=0x846ca68bu;n^=n>>16u;return n;
+}
+float ExtensionFogNoise(float2 p,uint salt){
+    const int2 cell=int2(floor(p));
+    float2 a=frac(p);a=a*a*(3.f-2.f*a);
+    const uint2 q=asuint(cell);
+    const uint x=q.x*0x9e3779b9u,z=q.y*0x85ebca6bu;
+    const uint xx=(q.x+1u)*0x9e3779b9u,zz=(q.y+1u)*0x85ebca6bu;
+    const float scale=1.f/16777215.f;
+    return lerp(lerp(float(ExtensionFogHash(x^z^salt)&0xffffffu),
+                     float(ExtensionFogHash(xx^z^salt)&0xffffffu),a.x),
+                lerp(float(ExtensionFogHash(x^zz^salt)&0xffffffu),
+                     float(ExtensionFogHash(xx^zz^salt)&0xffffffu),a.x),a.y)*scale;
+}
 struct Present {float4 color:SV_Target0;float depth:SV_Depth;};
 Present Tonemap(Out i){
     // SV_Position is in the full swapchain; UV is local to the cropped scene.
@@ -477,22 +494,54 @@ Present Tonemap(Out i){
         const float3 origin=eye[i.view].xyz;
         const float3 end=Unproject(uv,z,i.view);
         const float3 segment=(end-origin)/units;
-        const float rayMeters=min(length(segment),110.f);
-        const float3 direction=segment/max(length(segment),.00001f);
+        const float segmentMeters=length(segment);
+        const float3 direction=segment/max(segmentMeters,.00001f);
+        const bool extended=forestFogExtension.w>0.f;
+        float startMeters=0.f,endMeters=min(segmentMeters,110.f);
+        if(extended){
+            // Sample the actual near-ground height band, even for a distant
+            // aerial eye. Integrate the finite visible ray, not the first
+            // 110 m of empty air in front of the headset.
+            const float lower=min(forestFogStyle.z,forestFogExtension.z);
+            const float upper=max(forestFogStyle.z+forestFogStyle.w,forestFogExtension.z)+16.f;
+            endMeters=segmentMeters;
+            if(abs(direction.y)>1.e-6f){
+                const float a=(lower-origin.y)/direction.y,b=(upper-origin.y)/direction.y;
+                startMeters=max(0.f,min(a,b));
+                endMeters=min(endMeters,max(a,b));
+            }else if(origin.y<lower||origin.y>upper)endMeters=0.f;
+        }
+        const float rayMeters=max(0.f,endMeters-startMeters);
         const float daylight=saturate(normalize(solarSun.xyz-origin).y*2.f);
         const float contrast=forestFogStyle.y;
         float density=0.f;
         [unroll]for(uint j=0u;j<3u;++j){
-            const float d=rayMeters*(float(j)+.5f)/3.f;
+            const float d=startMeters+rayMeters*(float(j)+.5f)/3.f;
             const float3 p=origin+direction*(d*units);
             float ground=forestAtmosphere.w;
             float horizontal=1.f;
+            // Same 10 m cell-center eligibility as TerrainExpansion.
+            const float2 tileCenter=(floor(p.xz/10.f)+.5f)*10.f;
+            const bool extensionCell=extended&&length(tileCenter-forestFogExtension.xy)<=forestFogExtension.w;
+            if(extended){
+                ground=forestFogExtension.z;
+                horizontal=0.f;
+                if(extensionCell){
+                    const float broad=ExtensionFogNoise(p.xz/float2(18.f,12.f),0x41544d31u);
+                    const float fine=ExtensionFogNoise(p.xz/float2(5.f,8.f),0x464f4732u);
+                    // Flat extension has no authored waterway. Preserve the
+                    // atlas's broad/fine habitat scales and forest retention.
+                    const float retention=.12f+.34f*broad+.16f*fine+.38f*.65f;
+                    const float exposure=(1.f-.65f)*(.55f+.45f*broad);
+                    horizontal=lerp(1.f,(.35f+1.45f*retention)*(1.f-.42f*exposure),contrast);
+                }
+            }
             [branch]if(forestFogBinding.x!=0xffffffffu){
                 Texture2D<float4> field=ResourceDescriptorHeap[forestFogBinding.x];
                 SamplerState linearClamp=SamplerDescriptorHeap[2];
                 const float2 fieldUv=(p.xz-forestFogBounds.xy)*forestFogBounds.zw;
                 const float4 habitat=field.SampleLevel(linearClamp,saturate(fieldUv),0.f);
-                ground=forestFogStyle.z+habitat.a*forestFogStyle.w;
+                const float authoredGround=forestFogStyle.z+habitat.a*forestFogStyle.w;
                 const float edge=saturate(1.f-512.f*max(max(-fieldUv.x,-fieldUv.y),max(fieldUv.x-1.f,fieldUv.y-1.f)));
                 // Independent ecological inputs for later weather control:
                 // static retention, river humidity and open-canopy exposure.
@@ -500,7 +549,18 @@ Present Tonemap(Out i){
                 const float humidity=habitat.g;
                 const float exposure=habitat.b;
                 const float local=(.35f+1.45f*retention+.55f*humidity)*(1.f-.42f*exposure);
-                horizontal=lerp(1.f,local,contrast)*edge;
+                const float authored=lerp(1.f,local,contrast)*edge;
+                if(extensionCell){
+                    // The old atlas's R channel already includes land
+                    // coverage. Fade to extension ecology over its shoreline
+                    // rather than fading the whole forest atmosphere to zero.
+                    const float weight=smoothstep(0.f,.12f,habitat.r)*edge;
+                    ground=lerp(ground,authoredGround,weight);
+                    horizontal=lerp(horizontal,authored,weight);
+                }else{
+                    ground=authoredGround;
+                    horizontal=authored;
+                }
             }
             const float h=max(0.f,(p.y-ground)/units);
             // Continuous near-ground shoulder, then a long declining tail.

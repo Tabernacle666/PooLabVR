@@ -640,6 +640,9 @@ float Halton(uint32_t index,uint32_t base){
         c.atmosphereParams={-1.f,1.f,0,0};
         c.forestAtmosphere=forestExterior?XMFLOAT4{std::max(0.f,atmosphere.forestFog),
             std::max(0.f,atmosphere.forestDew),std::max(0.f,atmosphere.forestInsects),xr.input.forestGroundY}:XMFLOAT4{};
+        c.forestFogExtension=xr.input.forestFogExtension;
+        if(solarSystem&&atmosphere.forestAtmosphere&&c.forestFogExtension.w>0.f)
+            c.forestAtmosphere.x=std::max(0.f,atmosphere.forestFog);
         c.forestFogBounds=forestFogBounds;
         c.forestFogStyle={atmosphere.forestFogTone,atmosphere.forestFogContrast,forestFogHeight.x,forestFogHeight.y};
         c.forestFogBinding={forestFogTexture==Invalid?Invalid:Physical(textures[forestFogTexture].descriptor),

@@ -153,8 +153,11 @@ public:
     }
     void AtmosphereContext(FrameInput& input){
         input.forestExterior=false;
+        input.forestFogExtension={};
         for(const auto& letter:letters_)
             if(letter->Locate(input.head.p).inside)return;
+        // Fog is a world field, not a volume attached to the headset.
+        input.forestFogExtension=expansion_.FogExtent();
         if(const auto height=ground_.Height(input.head.p)){
             input.forestGroundY=*height;
             input.forestExterior=true;

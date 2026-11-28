@@ -90,6 +90,7 @@ struct FrameInput {
     uint32_t crossingCount{},insideSphere{Invalid};
     bool forestExterior{};
     float forestGroundY{};
+    XMFLOAT4 forestFogExtension{}; // published center XZ, ground Y, radius (0: inactive)
     float SceneNearZ() const noexcept {return NearZ*sceneUnitsPerMeter;}
     float SceneFarZ() const noexcept {return farClipMeters*sceneUnitsPerMeter;}
     const InputActionState& State(ActionId action)const{if(!action||action.value>=actionCount)Fail("Logical input action outside frame registry");return actions[action.value];}
