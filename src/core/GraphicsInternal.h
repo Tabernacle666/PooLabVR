@@ -816,7 +816,8 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
     void ConfigureForest(const SceneData&);
     void ResetForest();
     void PrepareForestPages(Frame&,const XRFrame&,const GpuSceneCache*,bool);
-    static std::shared_ptr<ForestPreparedGeneration> PackForestCut(ForestSelectionWork&);
+    // Serialized producer accesses this instance's source arenas and retirement pool.
+    std::shared_ptr<ForestPreparedGeneration> PackForestCut(ForestSelectionWork&);
     void CollectForestRetirements();
     bool EnsureForestSourceArenas(const Mg2Pages&);
     void PublishForestSourceViews(ForestGeneration&);
