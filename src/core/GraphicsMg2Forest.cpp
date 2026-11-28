@@ -1822,7 +1822,7 @@ void Graphics::Impl::ReleaseForestMutation(uint64_t id){
 }
 
 bool Graphics::Impl::ForestRouteRequired(uint32_t mesh,uint32_t flags,float sx,float sy,float sz)const{
-    return (flags&OASIS_INSTANCE_FOREST)&&ForestRouteEligible(mesh,flags,sx,sy,sz);
+    return (flags&(OASIS_INSTANCE_FOREST|BuildingObject))&&ForestRouteEligible(mesh,flags,sx,sy,sz);
 }
 bool Graphics::Impl::ForestRouteEligible(uint32_t mesh,uint32_t flags,float sx,float sy,float sz)const{
     return !(flags&(DeformedObject|AlphaBlendObject))&&

@@ -8,6 +8,9 @@
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
+#include <map>
+#include <set>
+#include <tuple>
 
 namespace OASIS {
 struct Mg2Worktop;
@@ -65,6 +68,17 @@ class BuildingSession {
     uint64_t roomGeometryRevision_{};
     std::unordered_map<uint64_t,Resident> resident_;
     std::unordered_map<uint32_t,uint64_t> partByRenderId_;
+    // Each producer owns its future route keys until admission or cancellation.
+    struct PendingPublication {
+        using Key=std::tuple<uint64_t,int32_t,uint64_t,uint64_t,uint32_t,ArchitectureKind>;
+        std::map<Key,uint64_t> added;
+        std::set<uint64_t> changed;
+    };
+    PendingPublication pendingStructure_,pendingDecor_,pendingWorktop_,pendingMoving_;
+    bool candidatePublicationPending_{};
+    static void CancelPublication(WorldRegistry&,PendingPublication&);
+    static std::optional<std::vector<uint64_t>> TryPublication(WorldRegistry&,PendingPublication&,
+        std::span<const WorldRegistry::Change>,std::span<const uint64_t>,std::span<const WorldObject>);
     struct WorktopResident {
         Buildings::Mount mount;
         int level;
@@ -119,9 +133,9 @@ class BuildingSession {
 
     Point Local(XMFLOAT3 p)const;
     WorldObject Visual(const Buildings::Part&,int)const;
-    void Publish(WorldRegistry&,std::span<const Buildings::Sector* const>,bool replace=false);
+    bool Publish(WorldRegistry&,std::span<const Buildings::Sector* const>,bool replace=false);
     void AdvanceLifts(WorldRegistry&,float);
-    void PublishMoving(WorldRegistry&);
+    bool PublishMoving(WorldRegistry&);
     void StartBreach();
     void QueueBreach(Buildings::Damage);
     std::optional<Buildings::Mount> WorktopSupport(const Buildings::Mount&,int level)const;

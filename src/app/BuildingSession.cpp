@@ -252,6 +252,9 @@ WorldObject BuildingSession::Visual(const Part& part,int level)const{
     return o;
 }
 void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t carpetNormal,const Mg2Worktop* worktop,const Mg2ArchitecturalPalette* pbr){
+    CancelPublication(world,pendingStructure_);CancelPublication(world,pendingDecor_);
+    CancelPublication(world,pendingWorktop_);CancelPublication(world,pendingMoving_);
+    candidatePublicationPending_=false;
     resident_.clear();
     partByRenderId_.clear();
     residentRooms_.clear();
@@ -377,12 +380,13 @@ void BuildingSession::Install(SceneData& scene,WorldRegistry& world,uint32_t car
         // Relief Ultra captures see the complete structural model at startup.
         for(const auto& room:sector->rooms)residentRooms_.insert(room.id);
         const auto* initial=sector.get();
-        Publish(world,std::span(&initial,1));
+        if(!Publish(world,std::span(&initial,1)))Fail("Architecture initial publication unexpectedly deferred");
     }
-    PublishMoving(world);
+    if(!PublishMoving(world))Fail("Architecture initial moving publication unexpectedly deferred");
 }
 void BuildingSession::PrepareRooms(WorldRegistry& world,XMFLOAT3 from,XMFLOAT3 to,
                                    std::optional<XMFLOAT3> forward,float farMeters){
+    if(candidatePublicationPending_)return;
     const auto a=Local(from),b=Local(to);
     std::array<int,2> destinations{};
     for(size_t i=0;i<lifts_.size();++i)
@@ -481,9 +485,15 @@ void BuildingSession::PrepareRooms(WorldRegistry& world,XMFLOAT3 from,XMFLOAT3 t
         }
         if(sectorChanged)changed.push_back(sector.get());
     }
-    if(changed.empty()&&requested.size()==residentRooms_.size())return;
+    if(changed.empty()&&requested.size()==residentRooms_.size()){
+        CancelPublication(world,pendingStructure_);return;
+    }
     residentRooms_.swap(requested);
-    Publish(world,changed,true);
+    if(!Publish(world,changed,true)){
+        residentRooms_.swap(requested);
+        roomViewer_.reset();
+        return;
+    }
     ++publicationRevision_;
 }
 std::optional<Mount> BuildingSession::WorktopSupport(const Mount& mount,int level)const{
@@ -801,8 +811,6 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
     // Only structural geometry changes or an explicit FIX-ROOM request may
     // rebuild an existing room's props.
     const bool rebuild=roomDecorGeometryRevision_!=geometryRevision_;
-    roomDecorRevision_=publicationRevision_;
-    roomDecorGeometryRevision_=geometryRevision_;
     constexpr float units=OasisSceneUnitsPerMeter;
     std::unordered_set<uint64_t> keep;
     struct Pending {uint64_t room;size_t first,count;};
@@ -1192,17 +1200,16 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
         }
     }
     std::vector<uint64_t> removed;
-    for(auto it=roomDecor_.begin();it!=roomDecor_.end();){
-        if(keep.contains(it->first)){++it;continue;}
-        removed.insert(removed.end(),it->second.handles.begin(),it->second.handles.end());
-        it=roomDecor_.erase(it);
-    }
-    if(removed.empty()&&added.empty()){
-        forceRoomDecor_.clear();
-        return;
+    for(const auto& [key,state]:roomDecor_){
+        if(keep.contains(key))continue;
+        removed.insert(removed.end(),state.handles.begin(),state.handles.end());
     }
     const std::vector<WorldRegistry::Change> changes;
-    const auto handles=world.ApplyBatch(changes,removed,added);
+    auto committed=TryPublication(world,pendingDecor_,changes,removed,added);
+    if(!committed){roomDecorViewer_.reset();return;}
+    const auto& handles=*committed;
+    std::erase_if(roomDecor_,[&](const auto& entry){return !keep.contains(entry.first);});
+    roomDecorRevision_=publicationRevision_;roomDecorGeometryRevision_=geometryRevision_;
     for(const auto& item:pending){
         RoomDecorResident state;
         state.handles.assign(handles.begin()+item.first,handles.begin()+item.first+item.count);
@@ -1213,7 +1220,7 @@ void BuildingSession::StreamRoomDecor(WorldRegistry& world,XMFLOAT3 head){
 }
 
 void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
-    if(!worktop_)return;
+    if(!worktop_||candidatePublicationPending_)return;
     StreamRoomDecor(world,head);
     const auto view=Local(head);
     const auto distanceSquared=[&](Point point){
@@ -1224,7 +1231,6 @@ void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
         return;
     worktopViewer_=view;
     const bool geometryChanged=worktopRevision_!=publicationRevision_;
-    worktopRevision_=publicationRevision_;
     struct PendingWorktop {WorktopResident item;size_t first,count;};
     std::unordered_set<uint64_t> keep;
     std::vector<PendingWorktop> pending;
@@ -1268,20 +1274,25 @@ void BuildingSession::StreamWorktops(WorldRegistry& world,XMFLOAT3 head){
         object.enabled=visible&&!heroDeskProxyIds_.contains(item.mount.detailPlaceholder);
         changes.push_back({part->second.handle,object});
     };
-    for(auto it=worktops_.begin();it!=worktops_.end();){
-        const auto& item=it->second;
-        if(keep.contains(it->first)){
+    for(const auto& [key,item]:worktops_){
+        if(keep.contains(key)){
             if(geometryChanged)showPlaceholder(item,false);
-            ++it;
         }else{
             showPlaceholder(item,true);
             removed.insert(removed.end(),item.handles.begin(),item.handles.end());
-            it=worktops_.erase(it);
         }
     }
     for(const auto& entry:pending)showPlaceholder(entry.item,false);
-    if(changes.empty()&&removed.empty()&&added.empty())return;
-    const auto handles=world.ApplyBatch(changes,removed,added);
+    // Old and replacement mounts may address the same placeholder.
+    std::map<uint64_t,WorldObject> finalChanges;
+    for(auto& change:changes)finalChanges.insert_or_assign(change.identity,std::move(change.object));
+    changes.clear();
+    for(auto& [id,object]:finalChanges)changes.push_back({id,std::move(object)});
+    auto committed=TryPublication(world,pendingWorktop_,changes,removed,added);
+    if(!committed){worktopViewer_.reset();return;}
+    const auto& handles=*committed;
+    std::erase_if(worktops_,[&](const auto& entry){return !keep.contains(entry.first);});
+    worktopRevision_=publicationRevision_;
     for(auto& entry:pending){
         const auto first=handles.begin()+entry.first;
         entry.item.handles.assign(first,first+entry.count);
@@ -1324,11 +1335,54 @@ void BuildingSession::AppendLights(std::vector<SceneLight>& lights,uint32_t beac
         lights.push_back(light);
     }
 }
-void BuildingSession::Publish(WorldRegistry& world,std::span<const Sector* const> sectors,bool replace){
+void BuildingSession::CancelPublication(WorldRegistry& world,PendingPublication& pending){
+    std::vector<uint64_t> ids;ids.reserve(pending.added.size()+pending.changed.size());
+    for(const auto& [key,id]:pending.added)ids.push_back(id);
+    ids.insert(ids.end(),pending.changed.begin(),pending.changed.end());
+    if(!ids.empty())world.CancelMutation(ids);
+    pending.added.clear();pending.changed.clear();
+}
+std::optional<std::vector<uint64_t>> BuildingSession::TryPublication(WorldRegistry& world,
+        PendingPublication& pending,std::span<const WorldRegistry::Change> changes,
+        std::span<const uint64_t> removed,std::span<const WorldObject> added){
+    std::vector<PendingPublication::Key> keys;keys.reserve(added.size());
+    std::set<PendingPublication::Key> desired;
+    for(const auto& object:added){
+        const auto& a=object.architecture;
+        PendingPublication::Key key{a.building,a.floor,a.room,a.component,a.ordinal,a.kind};
+        if(!a.building||!desired.insert(key).second)Fail("Duplicate architectural insertion recipe");
+        keys.push_back(key);
+    }
+    std::set<uint64_t> changed;
+    for(const auto& change:changes)changed.insert(change.identity);
+    std::vector<uint64_t> stale;
+    for(auto it=pending.added.begin();it!=pending.added.end();){
+        if(desired.contains(it->first)){++it;continue;}
+        stale.push_back(it->second);it=pending.added.erase(it);
+    }
+    for(auto id:pending.changed)if(!changed.contains(id))stale.push_back(id);
+    if(!stale.empty())world.CancelMutation(stale);
+    pending.changed=std::move(changed);
+    const auto reserved=world.ReserveMutationIdentities(desired.size()-pending.added.size());
+    size_t next=0;
+    std::vector<uint64_t> ids;ids.reserve(keys.size());
+    for(const auto& key:keys){
+        auto it=pending.added.find(key);
+        if(it==pending.added.end())it=pending.added.emplace(key,reserved.at(next++)).first;
+        ids.push_back(it->second);
+    }
+    if(changes.empty()&&removed.empty()&&added.empty())return std::vector<uint64_t>{};
+    auto committed=world.TryApplyBatch(changes,removed,added,ids);
+    if(committed){pending.added.clear();pending.changed.clear();}
+    return committed;
+}
+bool BuildingSession::Publish(WorldRegistry& world,std::span<const Sector* const> sectors,bool replace){
     std::unordered_set<uint64_t> keep;
     std::vector<uint64_t> removed;
     std::vector<WorldRegistry::Change> changes;
     std::vector<std::pair<Part,int>> added;
+    std::vector<Part> updated;
+    std::vector<uint64_t> removedParts;
     std::vector<WorldObject> visuals;
     for(const auto* sector:sectors)for(const auto& part:sector->parts){
         if(!RoomResident(part))continue;
@@ -1343,7 +1397,7 @@ void BuildingSession::Publish(WorldRegistry& world,std::span<const Sector* const
                (old.source!=part.source||old.bounds!=part.bounds))
                 Fail("Overlapping building fragment identities");
             changes.push_back({i->second.handle,Visual(part,sector->level)});
-            i->second.part=part;
+            updated.push_back(part);
         }
     }
     if(replace)for(const auto* sector:sectors){
@@ -1351,17 +1405,24 @@ void BuildingSession::Publish(WorldRegistry& world,std::span<const Sector* const
             if(keep.contains(part.id))continue;
             const auto i=resident_.find(part.id);
             if(i==resident_.end())continue;
-            partByRenderId_.erase(world.RenderId(i->second.handle));
             removed.push_back(i->second.handle);
-            resident_.erase(i);
+            removedParts.push_back(part.id);
         }
     }
-    const auto handles=world.ApplyBatch(changes,removed,visuals);
+    std::vector<uint32_t> removedRenderIds;removedRenderIds.reserve(removed.size());
+    for(auto id:removed)removedRenderIds.push_back(world.RenderId(id));
+    auto committed=TryPublication(world,pendingStructure_,changes,removed,visuals);
+    if(!committed)return false;
+    const auto& handles=*committed;
+    for(auto id:removedRenderIds)partByRenderId_.erase(id);
+    for(auto id:removedParts)resident_.erase(id);
+    for(const auto& part:updated)resident_.at(part.id).part=part;
     for(size_t i=0;i<handles.size();++i){
         const auto& part=added[i].first;
         resident_.emplace(part.id,Resident{part,handles[i]});
         partByRenderId_.emplace(world.RenderId(handles[i]),added[i].first.id);
     }
+    return true;
 }
 void BuildingSession::FixRoom(Target target){
     if(!worktop_||!target.inside||target.level<-1||target.level>=definition_.floors){
@@ -1490,6 +1551,10 @@ void BuildingSession::Tick(WorldRegistry& world,XMFLOAT3 head,float dt,
         for(const auto& part:sector.parts){
             const auto old=resident_.find(part.id);
             if((old==resident_.end()||old->second.part!=part)&&Blocks(feet,EyeHeight+.18f,part,definition_.xScale)){
+                if(candidatePublicationPending_){
+                    CancelPublication(world,pendingStructure_);candidatePublicationPending_=false;
+                    roomViewer_.reset();
+                }
                 status_="ZONE OCCUPEE";
                 return;
             }
@@ -1499,11 +1564,17 @@ void BuildingSession::Tick(WorldRegistry& world,XMFLOAT3 head,float dt,
         std::vector<const Sector*> changed;
         changed.reserve(next.sectors.size());
         for(const auto& sector:next.sectors)changed.push_back(&sector);
+        if(!candidatePublicationPending_){
+            CancelPublication(world,pendingStructure_);
+            CancelPublication(world,pendingWorktop_);worktopViewer_.reset();
+            candidatePublicationPending_=true;
+        }
+        if(!Publish(world,changed,true)){status_="PREPARATION MG2";return;}
+        candidatePublicationPending_=false;
         if(worktop_){
             for(const auto& sector:next.sectors)
                 heroRecipes_.at(size_t(sector.level+1))=BuildHeroRecipe(sector);
         }
-        Publish(world,changed,true);
         for(size_t i=0;i<next.sectors.size();++i){
             auto& sector=next.sectors[i];
             const auto index=size_t(sector.level+1);
@@ -1521,15 +1592,15 @@ void BuildingSession::Tick(WorldRegistry& world,XMFLOAT3 head,float dt,
     status_="SAUVEGARDE";
     saving_=std::async(std::launch::async,[path=savePath_,d=definition_,p=plan_]{return Save(path,d,p);});
 }
-void BuildingSession::PublishMoving(WorldRegistry& world){
-    movingParts_.clear();
+bool BuildingSession::PublishMoving(WorldRegistry& world){
+    std::vector<Part> nextParts;
     uint64_t id=(definition_.id<<32)|0xff000000u;
     std::vector<int> movingLevels;
     for(unsigned bank=0;bank<lifts_.size();++bank){
         const auto& lift=lifts_[bank];
         const auto r=Shafts[bank];
         const float y=lift.height,mid=(r.left+r.right)*.5f;
-        auto add=[&](Box box,Material material,int level){movingParts_.push_back({++id,box,material,true});movingLevels.push_back(level);};
+        auto add=[&](Box box,Material material,int level){nextParts.push_back({++id,box,material,true});movingLevels.push_back(level);};
         add({{r.left+.135f,y-.16f,r.front+.04f},{r.right-.135f,y,r.back-.135f}},Material::Floor,definition_.floors);
         add({{r.left+.14f,y,r.back-.25f},{r.right-.14f,y+2.34f,r.back-.14f}},Material::Metal,definition_.floors);
         add({{r.left+.14f,y+2.34f,r.front+.10f},{r.right-.14f,y+2.43f,r.back-.14f}},Material::Lamp,definition_.floors);
@@ -1541,19 +1612,27 @@ void BuildingSession::PublishMoving(WorldRegistry& world){
             add({{mid+slide,v,r.front+.014f},{mid+.71f+slide,v+2.12f,r.front+.095f}},Material::Metal,level);
         }
     }
-    for(size_t i=0;i<movingParts_.size();++i){
-        const auto& p=movingParts_[i];
+    std::vector<WorldRegistry::Change> changes;
+    std::vector<WorldObject> added;
+    std::vector<Part> addedParts,updated;
+    for(size_t i=0;i<nextParts.size();++i){
+        const auto& p=nextParts[i];
         auto object=Visual(p,definition_.floors);
         object.architecture.floor=movingLevels[i];object.architecture.kind=ArchitectureKind::Mobile;
         auto found=resident_.find(p.id);
-        if(found==resident_.end())resident_.emplace(p.id,Resident{p,world.Create(object)});
-        else if(found->second.part!=p){
-            world.Update(found->second.handle,object);
-            found->second.part=p;
-        }
+        if(found==resident_.end()){added.push_back(object);addedParts.push_back(p);}
+        else if(found->second.part!=p){changes.push_back({found->second.handle,object});updated.push_back(p);}
     }
+    auto committed=TryPublication(world,pendingMoving_,changes,{},added);
+    if(!committed)return false;
+    for(size_t i=0;i<addedParts.size();++i)
+        resident_.emplace(addedParts[i].id,Resident{addedParts[i],committed->at(i)});
+    for(const auto& p:updated)resident_.at(p.id).part=p;
+    movingParts_.swap(nextParts);
+    return true;
 }
 void BuildingSession::AdvanceLifts(WorldRegistry& world,float dt){
+    const auto previous=lifts_;
     bool dirty=false;
     for(auto& lift:lifts_){
         if(!lift.phase)continue;
@@ -1573,7 +1652,7 @@ void BuildingSession::AdvanceLifts(WorldRegistry& world,float dt){
             if(lift.door==1.f)lift.phase=0;
         }
     }
-    if(dirty)PublishMoving(world);
+    if(dirty&&!PublishMoving(world))lifts_=previous;
 }
 void BuildingSession::RequestLift(XMFLOAT3 head,int direction){
     auto p=Local(head);p.y-=EyeHeight;

@@ -68,11 +68,11 @@ namespace OASIS {
 
 
         // Transient CPU contributions have no persistent MG2 route.
-        // Vegetation must enter through the admitted world registry.
+        // Mandatory vegetation and architecture enter through the admitted world registry.
         for(uint32_t i=0;i<f.dynamicCount;++i){
             const auto& o=f.objects[i];
             if(ForestRouteRequired(o.mesh,o.flags,o.scale.x,o.scale.y,o.scale.z))
-                Fail("MG2 vegetation cannot use transient CPU contributions");
+                Fail("Mandatory MG2 geometry cannot use transient CPU contributions");
         }
         f.deformationWork.BeginFrame();f.blasWork.BeginFrame();
         auto deformationRevision=[&](uint32_t dynamicIndex){uint32_t mesh=dynamicMeshes[dynamicIndex];uint64_t revision=1469598103934665603ull;const auto& motion=animation.Motions()[mesh];if(motion.binding.x!=Invalid){revision=HashMemory(&motion,sizeof(motion),revision);if(motion.binding.z){uint32_t first=motion.binding.y,count=motion.binding.z;if(uint64_t(first)+count>animation.Bones().size())Fail("animation bone revision range");if(count)revision=HashMemory(animation.Bones().data()+first,size_t(count)*sizeof(GpuBone),revision);}if(motion.morph.x){uint32_t first=motion.morph.y,count=motion.morph.x;if(uint64_t(first)+count>animation.Weights().size())Fail("animation weight revision range");if(count)revision=HashMemory(animation.Weights().data()+first,size_t(count)*sizeof(float),revision);}}else{const auto& d=meshes.deformations[mesh];revision=HashMemory(&d,sizeof(d),revision);if(d.axisAmplitude.w!=0&&d.frequencyPhase.x!=0){float stretch=1+d.axisAmplitude.w*std::sin(float(f.simulationTime)*d.frequencyPhase.x+d.frequencyPhase.y);revision=HashMemory(&stretch,sizeof(stretch),revision);}}return revision?revision:1ull;};
