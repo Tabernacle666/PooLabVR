@@ -1716,6 +1716,66 @@ bool Graphics::Impl::ForestPublicationReady(const GpuSceneCache* tiles){
     const bool ready=!forestAdmissionStaticMissing&&forestAdmissionMissingTiles.empty();
     if(!forestInitialReady&&ready){
         DiagnosticLine("lod23_initial_publication ready=1 missing_routes=0\r\n");
+        // LOD-22 coverage snapshot: one pass at initial admission only.
+        // The immutable route table proves availability, not a draw or a
+        // TLAS binding. Do not turn optional architecture into mandatory
+        // admission before its mutation producers support transactions.
+        struct ArchCoverage {
+            size_t total{},disabled{},blend{},deformed{},degenerate{},unregistered{},
+                missingRoute{},routed{},rayExcluded{},rayAddressAvailable{};
+            std::set<std::pair<uint32_t,uint32_t>> sources,missingSources;
+        };
+        ArchCoverage residentArch,staticArch;
+        const auto audit=[&](ArchCoverage& a,uint32_t mesh,uint32_t material,
+                uint32_t flags,float sx,float sy,float sz,bool enabled,
+                const Mg2InstanceRoute& key){
+            if(!(flags&BuildingObject))return;
+            ++a.total;
+            if(!enabled){++a.disabled;return;}
+            a.sources.emplace(mesh,material);
+            if(flags&(NoRayTracing|DeformedObject|AlphaBlendObject))++a.rayExcluded;
+            if(flags&AlphaBlendObject){++a.blend;return;}
+            if(flags&DeformedObject){++a.deformed;return;}
+            if(std::min({std::abs(sx),std::abs(sy),std::abs(sz)})<1.e-6f){
+                ++a.degenerate;return;
+            }
+            if(!ForestRouteEligible(mesh,flags,sx,sy,sz)){
+                ++a.unregistered;a.missingSources.emplace(mesh,material);return;
+            }
+            const uint32_t variant=forestResident?forestResident->FindRoute(key):Invalid;
+            if(variant==Invalid){++a.missingRoute;return;}
+            ++a.routed;
+            if(flags&NoRayTracing)return;
+            const auto& owner=forestResident->geometryOwner?*forestResident->geometryOwner:*forestResident;
+            if(owner.backend==Mg2RayBackend::Standard){
+                if(variant<owner.blasAddresses.size()&&owner.blasAddresses[variant])++a.rayAddressAvailable;
+            }else if(variant<owner.blasEntries.size()&&owner.blasEntries[variant]&&
+                     owner.blasEntries[variant]->slot)++a.rayAddressAvailable;
+        };
+        const auto statics=sceneCache.StaticInstances();
+        for(uint32_t i=0;i<statics.size();++i){
+            const auto& o=statics[i];
+            audit(staticArch,o.mesh,o.material,o.flags,o.scale.x,o.scale.y,o.scale.z,true,
+                  {i,o.id,o.mesh,0u});
+        }
+        if(tiles)for(const auto& [key,tile]:tiles->ResidentTiles())for(const auto& o:tile.objects){
+            audit(residentArch,o.mesh,o.material,o.flags,o.scale.x,o.scale.y,o.scale.z,
+                  o.enabled!=0u,{uint32_t(o.identity),uint32_t(o.identity>>32u),o.mesh|Mg2ResidentKeyBit,0u});
+        }
+        const auto report=[&](const char* domain,const ArchCoverage& a){
+            char line[512];std::snprintf(line,sizeof(line),
+                "lod22_arch_coverage domain=%s serial=%llu total=%zu disabled=%zu blend=%zu deformed=%zu degenerate=%zu unregistered=%zu eligible_missing=%zu routed=%zu ray_excluded=%zu ray_address_available=%zu mesh_material_pairs=%zu missing_source_pairs=%zu\r\n",
+                domain,static_cast<unsigned long long>(serial),a.total,a.disabled,a.blend,a.deformed,
+                a.degenerate,a.unregistered,a.missingRoute,a.routed,a.rayExcluded,
+                a.rayAddressAvailable,a.sources.size(),a.missingSources.size());
+            DiagnosticLine(line);
+            for(const auto& [mesh,material]:a.missingSources){
+                std::snprintf(line,sizeof(line),"lod22_arch_missing_source domain=%s mesh=%u material=%u\r\n",
+                    domain,mesh,material);
+                DiagnosticLine(line);
+            }
+        };
+        report("static",staticArch);report("resident",residentArch);
         forestInitialReady=true;
     }
     if(first||((generationChanged||staticChanged||tileChanged)&&!ready)){

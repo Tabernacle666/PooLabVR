@@ -1,6 +1,6 @@
 # OASIS — Plan d'intégration LOD-22 : patrimoine architectural MG2
 
-**Révision : 28 novembre 2026 — chantier actif LOD-22, non commencé. LOD-23 intégré et accepté comme base de travail ; qualification territoriale à grande distance reportée.**
+**Révision : 28 novembre 2026 — chantier actif LOD-22, tâche 1 partiellement intégrée (audit statique et baseline réalisés ; instrumentation à compiler). LOD-23 intégré et accepté comme base de travail ; qualification territoriale à grande distance reportée.**
 
 Ce fichier remplace le document de dispatch LOD-23. Il constitue le mandat autonome du prochain agent. L'historique technique détaillé de LOD-23 reste disponible dans [la dernière révision de l'ancien plan](https://github.com/Tabernacle666/PooLabVR/blob/281d6f47038679e332a99266150b7dd97117fd70/PLAN_LOD.md). Ne pas rouvrir ce chantier pour faire apparaître des agrégats artificiellement.
 
@@ -20,7 +20,7 @@ Référentiel : [NVIDIA RTX Mega Geometry](https://github.com/NVIDIA-RTX/RTXMG),
 | 0 | LOD-00 | INTÉGRÉ / TESTÉ | Baseline bcb2df1972a1f78ee69b16e48c19ba6424eb49f1 |
 | 1 | LOD-21A/B | INTÉGRÉ / TESTÉ | Patrimoine végétal CPU f03cb9ed01a7a990214994cc4fb40197e499f8b4 / 97b91146b80862f15786d38372463dadf55a05c4 |
 | 2 | LOD-23 | INTÉGRÉ / TESTÉ / ACCEPTÉ POUR LA SUITE ; qualification partielle | Catalogue ouvert, coupes territoriales végétales, suppression du fallback natif végétal ; dcc5e79440b0428a335252b6c782a24531a3b228 |
-| 3 | **LOD-22** | **ACTIF — NON INTÉGRÉ** | Patrimoine architectural, sélection et publication verticales |
+| 3 | **LOD-22** | **ACTIF — PARTIEL** | Patrimoine architectural, sélection et publication verticales |
 | 4 | LOD-31 | NON INTÉGRÉ | Généralisation aux domaines restants |
 | 5 | LOD-32 | NON INTÉGRÉ | Publication raster/RTX des domaines restants |
 | 6 | LOD-41 | NON INTÉGRÉ | Élimination des parcours historiques |
@@ -64,7 +64,7 @@ Dernier benchmark complet : [journal LOD-23](diagnostics/sessions/20261128-03011
 
 | Ordre | Tâche | Statut |
 |---:|---|---|
-| 1 | Couverture MG2 du patrimoine architectural et profil de coût | NON INTÉGRÉ |
+| 1 | Couverture MG2 du patrimoine architectural et profil de coût | PARTIEL — audit et diagnostic initial intégrés ; compilation et couverture en mouvement non validées |
 | 2 | Modèle hiérarchique et identités de représentation | NON INTÉGRÉ |
 | 3 | Patrimoine pièces / mobilier | NON INTÉGRÉ |
 | 4 | Patrimoine étages / façades | NON INTÉGRÉ |
@@ -77,6 +77,25 @@ Dernier benchmark complet : [journal LOD-23](diagnostics/sessions/20261128-03011
 ### 1 — Couverture MG2 et coût architectural
 
 Recenser les meshes, flags, matériaux et routes effectives des structures, mobilier, services, vitres et parties mobiles. Distinguer statique, résident, dynamique, déformé, destructible et alpha blend. Identifier les chemins natifs résiduels et les informations manquantes (source complète, matériaux/UV, bornes, identité, révision, rattachement pièce/niveau/lettre). Identifier les postes de coût du logo aux fenêtres du benchmark : sélection, publication, Depth, Opaque.Resident, occlusion, rayons, accélérations, CPU et transferts. Ne pas présumer que la chute en mouvement est exclusivement une absence de LOD. Conserver les exceptions techniquement justifiées (verre réellement translucide, déformation, etc.) dans un chemin cohérent ; ne pas confondre cette séparation de matériau avec un fallback natif pour une route MG2 obligatoire.
+
+**Progression — audit de main 98906d9e :** `BuildingSession::Visual/Publish/PublishMoving` publient les structures et les ascenseurs via WorldRegistry ; le cube opaque est déclaré dans `mg2ForestParts`, le pane translucide en est séparé. `Assets.cpp::AppendRigidAssetImpl` inscrit déjà les meshes rigides non blend (y compris héros, mobilier, services, posters). L'admission obligatoire (`ForestRouteRequired`) reste végétale ; ne pas l'étendre avant de rendre les producteurs architecturaux transactionnels (tâche 6). Les contributions transitoires de GraphicsPrepare n'ont pas de route persistante. Les identités physiques Part et les handles WorldRegistry sont distincts ; les publications de décoration devront conserver leur rattachement sémantique et leurs révisions à la tâche 2. Les entrées du catalogue sont indexées par mesh, tandis que les matériaux effectifs sont portés par instance : préserver ces overrides dans les compositions.
+
+**Baseline vérifiée** : journal LOD-23 blob `26a0f0230b1eb74832a8ea4856f8c0d7be77f4d3`, run complet. Blocs de quatre secondes ; jointure des lignes GPU/work aux images soumises par frame ID, médianes des échantillons disponibles.
+
+| Bloc | Segment | FPS soumis | Depth médian ms | Opaque.Resident médian ms | Direct médian ms |
+|---|---:|---:|---:|---:|---:|
+| all | 1 | 8,50 | 38,46 | 63,75 | 119,62 |
+| all | 2 | 1,50 | 29,12 | 54,90 | 93,67 |
+| all | 3 | 30,50 | 6,84 | 10,74 | 20,18 |
+| all | 4 | 37,50 | 8,77 | 13,86 | 25,74 |
+| onlylogo | 1 | 46,00 | 2,94 | 4,81 | 9,28 |
+| onlylogo | 2 | 20,00 | 13,00 | 18,58 | 37,09 |
+| onlylogo | 3 | 49,25 | 0,84 | 1,68 | 4,84 |
+| onlylogo | 4 | 72,00 | 0,89 | 1,74 | 4,55 |
+
+Onlylogo S2 : worker sélection médian 490,71 ms, pack 87,59 ms, CPU ray 4,02 ms, TLAS update 0,39 ms, solar 2,40 ms ; S4 : 107,85 / 0 / 3,18 / 0,22 / 1,23 ms. Durées worker asynchrones, pas des temps par image ; compteurs MG2 globaux et masques ne prouvent pas la couverture architecturale. Depth + Opaque.Resident dominent le creux ; S2 all ne comporte que 6 images, prudence sur ses médianes. La cause (population visible, coupe, publication, occlusion) reste à isoler.
+
+**Instrumentation** : `GraphicsMg2Forest.cpp::ForestPublicationReady` journalise une seule photographie initiale du patrimoine BuildingObject statique et résident : catégories exclusives disabled/blend/deformed/degenerate/unregistered/eligible_missing/routed, paires mesh-matériau, sources manquantes, exclusions RTX et adresse d'accélération disponible. Aucun scan par image, aucune modification des routes, seuils, admissions ou consommateurs. La présence d'une route/adresse n'est pas une preuve de dessin ou de liaison TLAS effective. Compilation Windows non exécutée ; couverture au cours des mutations et contributions transitoires à compléter à partir des compteurs existants sans scan global répété. Ne pas déclencher de benchmark intermédiaire obligatoire ; le diagnostic sera lu à la qualification verticale. Prochaine opération : terminer l'audit des rattachements des placements (pièce/niveau/lettre), distinguer les contributions réellement transitoires et les composants mobiles, puis établir le modèle hiérarchique tâche 2.
 
 ### 2 — Modèle hiérarchique et identités
 
@@ -146,4 +165,4 @@ Sélection par racines puis coupes collectives ; erreur projetée stéréo (max 
 
 ## 12. Reprise
 
-**Ordre actuel :** lire `PLAN_LOD.md` sur `Tabernacle666/PooLabVR/main`, engager LOD-22 à partir de la première tâche non intégrée du §5, vérifier le code et ses dépendances amont/aval, intégrer une progression cohérente sur main avec actualisation des statuts du plan ; ne pas retoucher la végétation LOD-23 ni déclencher LOD-31/32 avant la qualification de la version architecturale.
+**Ordre actuel :** terminer l'audit LOD-22 tâche 1 (rattachements, mobiles et transitoires, consommation raster/RTX), puis engager la tâche 2 sans attendre un benchmark intermédiaire ; lire `PLAN_LOD.md` sur `Tabernacle666/PooLabVR/main`, engager LOD-22 à partir de la première tâche non intégrée du §5, vérifier le code et ses dépendances amont/aval, intégrer une progression cohérente sur main avec actualisation des statuts du plan ; ne pas retoucher la végétation LOD-23 ni déclencher LOD-31/32 avant la qualification de la version architecturale.
