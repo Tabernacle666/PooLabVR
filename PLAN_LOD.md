@@ -1,6 +1,6 @@
 # OASIS — Plan directeur LOD / géométrie territoriale
 
-**Révision du plan : 27 novembre 2026. LOD-23 en cours d'intégration ; prochain billet à terminer : LOD-23.**
+**Révision du plan : 28 novembre 2026. LOD-23 en cours : refonte du catalogue MG2 ouvert autorisée ; prochain travail interne : adressage et résidence extensibles.**
 
 Ce fichier est le document de dispatch du chantier. Il doit suffire à un agent sans historique de conversation. Le code et les journaux de main sont la source de vérité technique ; le plan fixe les objectifs, l'ordre et le périmètre, pas une liste d'implémentations intangibles.
 
@@ -28,7 +28,7 @@ Référentiel : [NVIDIA RTX Mega Geometry](https://github.com/NVIDIA-RTX/RTXMG),
 | 0 | LOD-00 | INTÉGRÉ, benchmark exécuté | Baseline vanilla du chantier LOD : bcb2df1972a1f78ee69b16e48c19ba6424eb49f1 |
 | 1a | LOD-21A | INTÉGRÉ, qualification optique insuffisante | Colonies/couvertures basses : f03cb9ed01a7a990214994cc4fb40197e499f8b4 |
 | 1b | LOD-21B | INTÉGRÉ, qualification optique insuffisante | Groupes/massifs forestiers : 97b91146b80862f15786d38372463dadf55a05c4 |
-| 2 | **LOD-23** | **PARTIEL — NON QUALIFIÉ — À TERMINER** | Corrections CPU du patrimoine et conservation des routes MG2 entre masques ; sélection et publication territoriales restent à intégrer |
+| 2 | **LOD-23** | **PARTIEL — NON QUALIFIÉ — À TERMINER** | [f9e349e7](https://github.com/Tabernacle666/PooLabVR/commit/f9e349e7643b6d7dd3bc95b253c3b4b65e5541fb) ; refonte du catalogue ouvert autorisée, puis sélection/publication territoriales. Voir suivi §5. |
 | 3 | LOD-22 | NON INTÉGRÉ | Patrimoine architectural, mobilier et composites |
 | 4 | LOD-31 | NON INTÉGRÉ | Généralisation de la sélection territoriale GPU |
 | 5 | LOD-32 | NON INTÉGRÉ | Généralisation de la publication raster / RTX |
@@ -86,13 +86,57 @@ Le producteur garde de la densité dans ses métadonnées, mais Fit limite la ta
 
 **Statut : PARTIEL — NON QUALIFIÉ.** L'intégration partielle ci-dessous ne clôt pas le billet et ne déclenche pas LOD-22. Les quatre opérations historiques restent absorbées dans LOD-23. L'agent choisit l'ordre de ses opérations internes, examine main et l'amont/aval, et tranche en fonction du comportement réel sur RTX, sans ajouter des sous-billets de dispatch.
 
-### État de l'intégration partielle (commit contenant cette révision)
- 
+### État de l'intégration partielle (f9e349e7643b6d7dd3bc95b253c3b4b65e5541fb)
+
 - Producteur : sous-cellules directionnelles à demi-pas ; une fusion n'est conservée que si l'erreur de surface projetée sur chacun des trois axes n'augmente pas par rapport aux sous-patches. Les triangles supplémentaires gardent leurs UV, matériaux et supports ; les groupes sont déterministes. Cache territorial versionné `lod23-v2` (les caches source MG2 et terrain restent intacts). Cela ne valide ni la transmittance ni la couleur et peut augmenter le coût CPU / mémoire de préparation.
 - Reconstruction locale : après une mutation/effacement du registre, retrouver les identités vivantes des feuilles touchées via l'index résident, reconstruire ces feuilles depuis les sources partagées, supprimer les parents vides et recalculer les ancêtres affectés. Cette reconstruction est synchrone sur le thread de session lors d'une mutation, pas un parcours par frame ; il reste à qualifier son coût et le cas des nouvelles insertions en dehors du producteur d'extents.
 - Fallback diagnostic : retirer le masque de scène du registre de sélection MG2 ; la coupe complète reste compatible avec les masques successifs, qui sont appliqués dans les consommateurs raster et rayons existants. Le journal `lod_mg2_mask` indique `mask_independent_cut=1`. Les métriques de sélection concernent désormais la coupe complète, pas la seule catégorie visible ; comparer le travail raster/RTX par scène comme avant. Le fallback initial, les nouvelles routes non encore publiées et la reconstruction de descripteurs RTX lors du changement de masque restent à traiter.
 - **Non réalisé :** publication dynamique des vrais triangles collectifs dans le catalogue MG2 et ses accélérations, sélection territoriale GPU par racines avec coupes raster/rayons indépendantes, substitution atomique des descendants, élimination du parcours et du readback individuels, cache des produits parents et qualification optique incluant silhouette/transmittance/couleur. Les proxies CPU ne sont toujours pas rendus ; ne pas attribuer de gain visuel ou de FPS à leur production.
-- Validation : inspection statique des consommateurs et des transactions ; compilation Windows/DX12, test de mutation et benchmark VR non exécutés dans cet environnement. Le testeur peut lancer `pull_compile_run.bat lod` et vérifier l'absence de perte des catégories, le compteur de meshlets natifs après la première publication complète, la couverture directionnelle des nouvelles coupes CPU, le coût de préparation et les métriques de sélection. Aucun gain n'est déclaré sans mesure.
+- Validation : inspection statique des consommateurs et des transactions ; compilation Windows/DX12, test de mutation et benchmark VR non exécutés dans cet environnement. Aucun test intermédiaire n'est demandé au joueur : le benchmark `pull_compile_run.bat lod` est réservé à la version complète de LOD-23. Aucun gain n'est déclaré sans mesure.
+
+### Décision architecturale autorisée — catalogue MG2 ouvert
+
+Le monde extensible est arrivé après la conception du catalogue géométrique fermé. Le propriétaire du projet autorise explicitement la levée de ces invariants historiques, y compris les modifications transversales nécessaires pour LOD-23. Ne pas construire un second moteur de rendu spécialisé dans les forêts. Le catalogue doit accepter des représentations individuelles ou collectives produites après le démarrage, sans reconstruire le patrimoine inchangé.
+
+**Contrat joueur :** même lancement OASIS.exe, commandes, réglages, monde, population, interactions, collisions, destruction et effets. Pas de manipulation ou de test supplémentaire demandé au joueur pour cette migration. Les gains attendus concernent le travail de sélection/publication et la scalabilité ; la transparence visuelle, le démarrage, la stabilité et les performances restent à vérifier, pas à présumer.
+
+| Invariant historique à lever | Invariant de remplacement |
+|---|---|
+| Catalogue complet au démarrage (ConfigureForest / forestHierarchy) | Catalogue ouvert, segments immuables individuellement, publication locale et asynchrone |
+| Ressource sparse unique dimensionnée par le catalogue initial | Stockage extensible indépendant du catalogue global ; segments ou espaces virtuels stables, allocation physique à la demande |
+| SourceIndexOffset dépend du nombre total de sommets | Adresses et références stables pour les segments déjà publiés ; pas de déplacement des indices à chaque croissance |
+| Identifiants de clusters issus d'une numérotation locale au bake | Identité stable et non ambiguë des clusters / révisions, compatible avec les caches CLAS/BLAS |
+| Route MG2 = objet physique individuel | Route de représentation distincte de l'identité physique ; agrégat sans nouvel objet de simulation |
+| Sélection démarrant aux instances, coupe raster/RTX imposée commune | Racines territoriales et coupes par domaine ; publication cohérente mais indépendance des choix optiques |
+
+Ne pas lever l'immuabilité du contenu des clusters publiés : une modification produit une nouvelle révision. Conserver les identités et sources physiques, les caches persistants réutilisables, les CLAS/BLAS valides, la résidence selon le budget DXGI réel et les garanties de durée de vie par fence. Le stockage doit permettre de conserver les ressources coûteuses tant que la pression réelle ne justifie pas leur éviction. Pas de nouveau plafond arbitraire de VRAM ou de population.
+
+Références : [NVIDIA RTX Mega Geometry](https://github.com/NVIDIA-RTX/RTXMG), [NVIDIA RTX whitepapers](https://github.com/NVIDIA-RTX/Whitepapers), [D3D12 reserved resources](https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12device-createreservedresource). Ces mécanismes permettent de choisir l'architecture ; ne pas prétendre disposer du code propriétaire de la végétation de The Witcher 4.
+
+### Suivi interne de LOD-23 (pas de nouveaux billets de dispatch)
+
+Ordre technique indicatif, ajustable selon les dépendances. Mettre à jour les statuts dans ce fichier au fur et à mesure des changements effectifs sur main. INTÉGRÉ signifie présent dans le code, pas compilé ou qualifié ; PARTIEL signifie incomplet ; AUDITÉ signifie inspecté sans implémentation. Référencer le commit ou le commit contenant la mise à jour. Les étapes ne prescrivent ni un commit par ligne ni un test utilisateur par ligne.
+
+| Ordre | Travail interne | Statut / référence |
+|---:|---|---|
+| 0 | Audit du catalogue fermé et de ses dépendances ; levée des invariants autorisée | AUDITÉ — décision du présent plan |
+| 1 | Adressage géométrique indépendant de la taille globale ; allocation/résidence extensible et durée de vie GPU | NON INTÉGRÉ — prochain |
+| 2 | Catalogue Mg2Pages extensible, identités/révisions stables, enregistrement et retrait local de segments, snapshots de producteurs | NON INTÉGRÉ |
+| 3 | Adaptation des consommateurs communs raster, CLAS/BLAS, OMM, hit shading, PTLAS et caches à l'adressage ouvert | NON INTÉGRÉ |
+| 4 | Correction du patrimoine optique bas et forestier, cache des produits et reconstruction incrémentale | PARTIEL — f9e349e7 ; reconstruction des feuilles touchées présente mais non testée, couverture/transmittance/couleur et coût restant à traiter |
+| 5 | Routes collectives distinctes de la simulation, sélection hiérarchique GPU et suppression de la traversée/readback des descendants couverts | NON INTÉGRÉ |
+| 6 | Publication effective et atomique des agrégats et coupes raster/RTX, invalidation locale et retour sûr aux enfants | NON INTÉGRÉ |
+| 7 | Élimination du fallback natif massif, y compris démarrage et nouvelles routes | PARTIEL — f9e349e7 ; conservation de la coupe lors des masques diagnostic, autres causes non traitées |
+| 8 | Inspection amont/aval finale, compilation si disponible, qualification benchmark et visuelle de LOD-23 complet | NON QUALIFIÉ |
+
+### Dépendances transversales à protéger lors de la refonte
+
+- `Mg2Pages.h/.cpp` : `SourceIndexOffset`, `SourceVirtualBytes`, `PackSourceTile`, offsets et IDs attribués au bake, tables GPU de sélection. Les identifiants de clusters ne doivent jamais entrer en collision entre segments ou révisions ; éviter de réécrire une page physique encore lue par une génération.
+- `GraphicsMg2Forest.cpp` / `GraphicsInternal.h` : `ConfigureForest`, `forestHierarchy`, `ForestSourcePool`, `PackForestCut`, `UploadForestPages`, `ForestGeneration`, workers et fences. Le catalogue et les tables consommés par une génération doivent rester cohérents jusqu'à sa retraite ; aucun accès concurrent à des vecteurs mutables. Les caches CLAS utilisent actuellement (ID de cluster, offset de primitive dans le cut), les BLAS une suite ordonnée d'IDs ; préserver la sémantique de GeometryIndex ou adapter ensemble construction et lecture. Ne pas invalider tout le cache lors d'un append.
+- `common.hlsli`, `scene.hlsl`, `compute.hlsl` et `GraphicsRender.cpp` : `MeshResource`, `MeshletTriangle`, `LoadMeshRange`, `LoadInstanceStable`, `LoadCameraInstance`, `RayTexturedOpacity`, `LoadRayTriangle`, tables de descripteurs et indices de hit. Le chemin natif, les matériaux, la géométrie coupée et les objets déformables doivent continuer à fonctionner.
+- `GraphicsFoliageOmm.cpp` : `FindFoliageOmm(mesh)` lie actuellement l'OMM au mesh source ; vérifier la compatibilité UV/matériau des nouvelles représentations, ne pas traiter le feuillage masqué comme opaque faute de micromap.
+- `WorldRegistry.*`, `GpuSceneCache.*`, `GraphicsResidentTiles.cpp`, `GraphicsRayTracing.cpp` : identité physique et slots PTLAS actuels associés aux objets résidents ; distinguer la représentation collective de cette identité, maintenir les identités de collision/destruction, les masques et les contributions hors champ ; ne pas laisser les anciens chemins réactiver les enfants sous un parent actif.
+- Préserver le cache existant quand ses données restent valides, les versions de format quand elles changent, le lancement et la croissance asynchrones ; vérifier les cas de remplacement, suppression, réapparition et publication interrompue. Si une décision technique reste bloquée, formuler une question précise à transmettre au propriétaire plutôt que de pousser une solution incomplète en prétendant le billet terminé.
 
 ### Production géométrique
 
@@ -148,6 +192,6 @@ Sélection par racines puis coupes collectives ; erreur projetée stéréo (max 
 
 Garder les journaux compacts et exploitables : résumés par scène/segment, FPS et frametimes CPU/GPU (P95/P99 lorsque possible), population logique/résidente/sélectionnée, nœuds visités/raffinés et agrégats, triangles/meshlets/clusters uniques, sélection/compaction/readback/publication, passes visibility/depth/opaque, ExecuteIndirect et PSO, CLAS/BLAS reconstruits et partitions PTLAS modifiées, rayons et coûts soleil/reflets, VRAM/budget/DDR4/transferts, hits/misses et reconstruction du cache, invalidations/générations et erreurs de couverture. Éviter les répétitions par frame sans valeur ; ne pas supprimer un compteur qui permet de localiser le coût. Le benchmark existant reste la référence, pas une succession de nouvelles batteries de QA.
 
-Un billet = une version cohérente testable = un commit substantiel sur main (sauf qualification LOD-43 sans correction). Pas de branches, PR ni micro-commits de chaque opération interne. L'agent inspecte main, repère les emplacements réels, évalue les dépendances amont/aval, choisit les solutions adaptées au matériel NVIDIA sans déborder inutilement sur les billets suivants. Ne pas imposer une procédure de développement supplémentaire. Compilation lorsque disponible, sinon signaler explicitement la limite ; indiquer au testeur ce qu'il doit observer. Ne pas déclarer un gain non mesuré.
+Un billet vise une version cohérente testable sur main (sauf qualification LOD-43 sans correction). Exception explicitement autorisée pour la refonte LOD-23 : le plan est actualisé et les travaux internes intégrés sont marqués au fur et à mesure ; les commits de progression nécessaires doivent être cohérents, ne constituent pas de nouveaux billets et ne déclenchent aucun benchmark utilisateur avant l'intégration complète. Pas de qualification fictive ni de micro-commits décoratifs. Pas de branches, PR ni micro-commits de chaque opération interne. L'agent inspecte main, repère les emplacements réels, évalue les dépendances amont/aval, choisit les solutions adaptées au matériel NVIDIA sans déborder inutilement sur les billets suivants. Ne pas imposer une procédure de développement supplémentaire. Compilation lorsque disponible, sinon signaler explicitement la limite ; indiquer au testeur ce qu'il doit observer. Ne pas déclarer un gain non mesuré.
 
 Ce plan est maintenu dans main : après chaque billet, mettre à jour son statut et sa référence dans ce même fichier (dans le commit du billet si possible, référence de commit complétée par le prochain agent si nécessaire). Distinguer intégré, testé et qualifié ; les décisions importantes ou limites restantes doivent être inscrites ici, pas seulement dans le chat. Le prochain agent reçoit uniquement l'identifiant du billet et le chemin de ce fichier.
