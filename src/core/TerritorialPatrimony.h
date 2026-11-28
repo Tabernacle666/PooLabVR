@@ -19,6 +19,7 @@
 
 namespace OASIS {
 enum class TerritorialDomain : uint8_t { Vegetation, Forest, Architecture };
+struct ArchitectureRecipeNode;
 // Territorial CPU patrimony. Mesh publication is still a separate consumer.
 // Patches retain the source material and UV frame; each bin may retain
 // multiple spatially distinct triangles if one loses directional coverage.
@@ -92,6 +93,7 @@ public:
         std::vector<uint64_t> routes; // leaves reference authoritative object identities
         std::vector<Key> children;   // parents reference collective cuts, not flattened routes
         std::vector<Patch> patches;
+        std::shared_ptr<const ArchitectureRecipeNode> architecture;
         uint64_t sourceTriangles{},referenceTriangles{},sourceRoutes{};
         bool valid{true};
         // Already-fitted triangles: no geometry simplification or source

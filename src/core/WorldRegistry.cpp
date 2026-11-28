@@ -369,6 +369,9 @@ RenderContributions WorldRegistry::Contributions()noexcept {
         auto& world=*static_cast<WorldRegistry*>(ptr);
         return forest?&world.forestPatrimony_:&world.vegetationPatrimony_;
     };
+    result.architecturePatrimony=[](void* ptr)->ArchitecturePatrimony*{
+        return &static_cast<WorldRegistry*>(ptr)->architecturePatrimony_;
+    };
     return result;
 }
 }

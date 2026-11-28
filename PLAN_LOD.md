@@ -66,10 +66,10 @@ Dernier benchmark complet : [journal LOD-23](diagnostics/sessions/20261128-03011
 |---:|---|---|
 | 1 | Couverture MG2 du patrimoine architectural et profil de coût | INTÉGRÉ (audit et instrumentation) — validation runtime à la qualification |
 | 2 | Modèle hiérarchique et identités de représentation | INTÉGRÉ côté CPU / domaine commun — admission catalogue à compléter tâche 6 |
-| 3 | Patrimoine pièces / mobilier | PARTIEL — recettes de placement référencées, géométrie collective à produire |
-| 4 | Patrimoine étages / façades | PARTIEL — hiérarchie et partition façade, géométrie à produire |
-| 5 | Patrimoine lettres / silhouette du logo | PARTIEL — parenté lettre/logo, géométrie à produire |
-| 6 | Admission catalogue, cache, révisions et destruction | NON INTÉGRÉ |
+| 3 | Patrimoine pièces / mobilier | PARTIEL AVANCÉ — producteur MG2 des coupes opaques et sources mutualisées intégré ; fusion/optique à compléter |
+| 4 | Patrimoine étages / façades | PARTIEL AVANCÉ — composition réelle des sources admissibles par niveau/façade ; consommation à intégrer |
+| 5 | Patrimoine lettres / silhouette du logo | PARTIEL AVANCÉ — composition réelle des lettres/logo à la demande ; simplification structurelle à compléter |
+| 6 | Admission catalogue, cache, révisions et destruction | PARTIEL — source catalogue ouverte et invalidations locales ; admission obligatoire/transaction et cache persistant architectural à compléter |
 | 7 | Sélection GPU, stabilité en déplacement et occlusion | NON INTÉGRÉ |
 | 8 | Publication raster et RTX, compaction des descendants | NON INTÉGRÉ |
 | 9 | Qualification du chantier | NON EXÉCUTÉ |
@@ -116,6 +116,10 @@ Composer les pièces, corridors, dalles, structures, cages, gaines et enveloppes
 ### 5 — Lettres et logo
 
 Produire des coupes géométriques d'enveloppe et silhouette à l'échelle de chaque lettre et du logo, issues des bandes et volumes réels (y compris toiture, dessous, atriums, concavités et passages traversants). Ne pas employer une boîte englobante comme substitut de silhouette, occludeur opaque ou volume plein de O/A/S. Conserver les proportions, séparations entre lettres, ouvertures et trame architecturale encore perceptible. Conserver les descendants pertinents si la coupe supérieure ne suffit pas. Priorité moyenne distance : façade/étage/lettre doivent être réellement disponibles, pas seulement une silhouette extrême.
+
+**Progression production géométrique (tâches 3–5)** : `Mg2Pages::RootCutError/AppendRootCutTriangles` extrait la coupe racine complète des DAG sources existants, avec le maximum des erreurs des groupes enfants utilisées par le sélecteur individuel. `ArchitecturePatrimony::Synchronize` produit des recettes immuables par pièce/étage/façade/lettre/logo, partage les enfants et reconstruit uniquement les branches modifiées. Les supports sont issus des bornes de meshes originales et de leurs transformations, majorés par l'erreur source. Le worker commun de `PrepareTerritorialCatalog` compose les véritables triangles source à la demande selon erreur projetée stéréo (1,1 px existant), sans distance fixe ni quota, en réutilisant une seule extraction par mesh dans chaque job. Matériaux effectifs, normales inverse-échelle, deux UV, vrais vides des lettres, trame et géométrie source sont conservés ; les cubes structurels ne sont admis que si leur erreur source est exactement nulle. Les mobiles, blends, alpha-test (optique non qualifiée), déformations et cas spéciaux restent hors de cette première composition. Pas de boîte englobante rendue. La fusion coplanaire et la simplification inter-composants supplémentaire ne sont pas encore implémentées ; les agrégats constituent des coupes composées, pas une garantie de réduction de triangles au-delà des coupes MG2 sources.
+
+Le producteur publie les segments via `Mg2Pages::FromAuthoredTriangles/Extend` et le catalogue commun, après admission initiale végétale et sans attendre le worker dans XR. Les mutations retirent les représentations des branches touchées ; les générations déjà capturées conservent leurs propriétaires immuables. L'admission dans le sélecteur final reste volontairement désactivée pour Architecture tant que la couverture raster/RTX et les identités de receiver/impact n'ont pas été intégrées (tâches 7–8). Pas de substitution visible ni de gain FPS revendiqué. Le coût initial des snapshots et la stabilité du worker doivent être mesurés lors de la qualification ; aucune compilation Windows exécutée.
 
 ### 6 — Catalogue, cache, révisions
 
@@ -169,4 +173,4 @@ Sélection par racines puis coupes collectives ; erreur projetée stéréo (max 
 
 ## 12. Reprise
 
-**Ordre actuel :** poursuivre LOD-22 tâches 3–5, convertir les recettes ArchitecturePatrimony en géométrie collective MG2 sur worker, admission tâche 6 ; lire `PLAN_LOD.md` sur `Tabernacle666/PooLabVR/main`, engager LOD-22 à partir de la première tâche non intégrée du §5, vérifier le code et ses dépendances amont/aval, intégrer une progression cohérente sur main avec actualisation des statuts du plan ; ne pas retoucher la végétation LOD-23 ni déclencher LOD-31/32 avant la qualification de la version architecturale.
+**Ordre actuel :** poursuivre LOD-22 tâches 3–8 : compléter la simplification inter-composants, valider l'admission/invalidations et connecter les représentations architecturales au sélecteur/consommateurs communs avec identité physique préservée ; lire `PLAN_LOD.md` sur `Tabernacle666/PooLabVR/main`, engager LOD-22 à partir de la première tâche non intégrée du §5, vérifier le code et ses dépendances amont/aval, intégrer une progression cohérente sur main avec actualisation des statuts du plan ; ne pas retoucher la végétation LOD-23 ni déclencher LOD-31/32 avant la qualification de la version architecturale.

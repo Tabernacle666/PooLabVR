@@ -3,6 +3,7 @@
 #include "Assets.h"
 #include "Mg2Pages.h"
 #include "TerritorialPatrimony.h"
+#include "ArchitecturePatrimony.h"
 #include "SolarSystem.h"
 #include "Animation.h"
 #include "GpuMemory.h"
@@ -652,11 +653,12 @@ MeshData meshes;SceneAnimation animation;JobSystem* jobs{};bool sceneLoaded{},wr
         std::map<TerritorialCatalogKey,TerritorialCatalogNode> active;
         // Identity-only bindings, never dereferenced by the worker.
         std::array<const TerritorialPatrimony*,2> sources{};
+        const ArchitecturePatrimony* architectureSource{};
         uint64_t activeRevision{1};
         uint32_t nextId{Mg2ResidentKeyBit-1u};
         bool blocked{};
     } territorialCatalog;
-    void PrepareTerritorialCatalog();
+    void PrepareTerritorialCatalog(const XRFrame&,const GpuSceneCache*);
     // A render-only cut owns its exact descendant identities. Frame slots
     // retain it independently from the latest CPU catalog and ray mapping.
     struct TerritorialFrameCut {

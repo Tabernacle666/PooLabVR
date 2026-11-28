@@ -1122,7 +1122,7 @@ void Graphics::Impl::InvalidateForestShadows(Frame& f,const GpuSceneCache* tiles
     }
 }
 
-void Graphics::Impl::PrepareTerritorialCatalog(){
+void Graphics::Impl::PrepareTerritorialCatalog(const XRFrame& xr,const GpuSceneCache* tiles){
     // A catalog snapshot needs the baked source, not a published raster
     // generation. Start the territorial CPU producer alongside the first
     // GPU selection/build, rather than forcing it to wait for a potentially
@@ -1169,6 +1169,34 @@ void Graphics::Impl::PrepareTerritorialCatalog(){
             if(patrimony)accept(patrimony->SnapshotChanges());
         }
         if(patrimony&&patrimony->HasChanges())accept(patrimony->TakeChanges());
+    }
+    // Architecture uses the same catalog transaction but has semantic
+    // parentage. Do not compete with mandatory initial vegetation admission.
+    auto* architecture=contributions.architecturePatrimony?
+        contributions.architecturePatrimony(contributions.context):nullptr;
+    if(work.architectureSource!=architecture){
+        std::vector<TerritorialCatalogKey> remove;
+        for(const auto& [key,node]:work.active)
+            if(key.first==TerritorialDomain::Architecture)remove.push_back(key);
+        for(const auto& key:remove){retireActive(key);work.pending.insert_or_assign(key,nullptr);}
+        for(auto& [key,node]:work.pending)if(key.first==TerritorialDomain::Architecture)node.reset();
+        if(work.inFlight)for(const auto& [key,node]:*work.inFlight)
+            if(key.first==TerritorialDomain::Architecture)work.pending.insert_or_assign(key,nullptr);
+        work.architectureSource=architecture;work.blocked=false;
+        if(architecture)architecture->MarkAll();
+    }
+    if(architecture&&tiles&&forestInitialReady&&!architecture->Changes().empty()){
+        std::vector<uint32_t> modes;modes.reserve(surfaceData.size());
+        for(const auto& surface:surfaceData)modes.push_back(surface.extra.y);
+        const auto changes=architecture->Synchronize(*tiles,*forestHierarchy,meshes.ranges,modes);
+        for(const auto& key:changes){
+            const TerritorialCatalogKey identity{TerritorialDomain::Architecture,key};
+            const bool existed=work.active.contains(identity)||work.pending.contains(identity)||
+                (work.inFlight&&work.inFlight->contains(identity));
+            retireActive(identity);
+            if(existed)work.pending.insert_or_assign(identity,nullptr);
+        }
+        work.blocked=false;
     }
     const auto restore=[&]{
         if(work.inFlight)for(const auto& [key,node]:*work.inFlight)
@@ -1226,6 +1254,45 @@ void Graphics::Impl::PrepareTerritorialCatalog(){
             DiagnosticLine("lod23_catalog rejected=1 reason=unknown\r\n");restore();return;
         }
     }
+    if(architecture&&tiles&&forestInitialReady&&!work.blocked&&!work.completion.valid()&&
+       std::ranges::none_of(work.pending,[](const auto& entry){return entry.first.first!=TerritorialDomain::Architecture;})){
+        // Request the largest admissible semantic support. No fixed distance
+        // or aggregate count: use the existing stereo pixel criterion and
+        // the actual coarse-source error. Retain authored representations
+        // until a source revision or the existing memory policy retires them.
+        const auto acceptable=[&](const ArchitectureRecipeNode& node){
+            if(node.routes<2u||!xr.viewCount)return false;
+            for(uint32_t eye=0;eye<xr.viewCount;++eye){
+                const auto& fov=xr.fov[eye];
+                const float h=std::tan(fov.angleRight)-std::tan(fov.angleLeft);
+                const float v=std::tan(fov.angleUp)-std::tan(fov.angleDown);
+                const float focal=std::max(h>.01f?float(width)/h:float(width)*.5f,
+                    v>.01f?float(height)/v:float(height)*.5f);
+                const float d=Length(Sub(xr.eyes[eye],{node.sphere.x,node.sphere.y,node.sphere.z}));
+                const float distance=d-node.sphere.w-1.e-5f*(d+node.sphere.w+1.f);
+                if(distance<=xr.input.SceneNearZ()||node.error*focal>TerritorialRasterPixels*distance)return false;
+            }
+            return true;
+        };
+        const auto demand=[&](auto&& self,const std::shared_ptr<const ArchitectureRecipeNode>& node)->void{
+            if(!node)return;
+            if(acceptable(*node)){
+                const TerritorialCatalogKey key{TerritorialDomain::Architecture,node->key};
+                if(!work.active.contains(key)){
+                    auto authored=std::make_shared<TerritorialPatrimony::Node>();
+                    authored->key=node->key;authored->architecture=node;
+                    authored->sourceRoutes=node->routes;authored->sourceTriangles=node->sourceTriangles;
+                    work.pending.insert_or_assign(key,std::move(authored));
+                }
+                return;
+            }
+            for(const auto& child:node->children)self(self,child);
+        };
+        const auto& nodes=architecture->Nodes();
+        TerritorialPatrimony::Key root{};root.level=3u;
+        for(auto it=nodes.lower_bound(root);it!=nodes.end();++it)
+            if(it->first.level==3u)demand(demand,it->second.recipe);
+    }
     if(work.blocked||(work.pending.empty()&&work.retired.empty()))return;
     std::vector<uint32_t> alphaModes;alphaModes.reserve(surfaceData.size());
     for(const auto& surface:surfaceData)alphaModes.push_back(surface.extra.y);
@@ -1239,18 +1306,60 @@ void Graphics::Impl::PrepareTerritorialCatalog(){
             TerritorialCatalogResult result;result.catalog=retired->empty()?base:base->RetireMeshes(*retired);
             result.nextId=nextId;
             std::vector<Mg2Pages::AuthoredMesh> meshes;
+            std::unordered_map<uint32_t,std::vector<Vertex>> architectureSources;
             for(const auto& [key,node]:*batch){
                 auto& replacement=result.replacements[key];
-                if(!node||node->patches.empty())continue;
+                if(!node||(!node->architecture&&node->patches.empty()))continue;
                 replacement.node=node;
                 auto& reps=replacement.representations;
-                const auto origin=node->patches.front().center;
+                const auto origin=node->architecture?
+                    XMFLOAT3{node->architecture->sphere.x,node->architecture->sphere.y,node->architecture->sphere.z}:
+                    node->patches.front().center;
                 struct Group {
                     std::vector<Vertex> vertices;
                     XMFLOAT3 lo{INFINITY,INFINITY,INFINITY},hi{-INFINITY,-INFINITY,-INFINITY};
                     float geometric{},optical{};
                 };
                 std::map<std::pair<uint32_t,uint32_t>,Group> groups;
+                if(node->architecture){
+                    // Source clusters are extracted once per mesh in this
+                    // job; parents share immutable child recipes, not
+                    // pre-expanded triangles. Retain authored UV0/UV1 and
+                    // transform normals with inverse scale.
+                    auto authored=std::make_shared<TerritorialPatrimony::Node>(*node);
+                    const auto emit=[&](auto&& self,const ArchitectureRecipeNode& recipe)->void{
+                        for(const auto& p:recipe.placements){
+                            auto [source,inserted]=architectureSources.try_emplace(p.mesh);
+                            if(inserted&&!base->AppendRootCutTriangles(p.mesh,source->second))
+                                Fail("LOD22 missing architecture source cut");
+                            if(p.material>=alphaModes.size()||alphaModes[p.material]!=0u)
+                                Fail("LOD22 architecture material changed");
+                            auto& group=groups[{p.material,0u}];
+                            const auto matrix=Matrix(p.pose);
+                            const auto rotation=Matrix(Pose{{},p.pose.q});
+                            for(auto v:source->second){
+                                v.position=Sub(TransformPoint({v.position.x*p.scale.x,
+                                    v.position.y*p.scale.y,v.position.z*p.scale.z},matrix),origin);
+                                v.normal=Unit(TransformDirection({v.normal.x/p.scale.x,
+                                    v.normal.y/p.scale.y,v.normal.z/p.scale.z},rotation));
+                                group.lo={std::min(group.lo.x,v.position.x),std::min(group.lo.y,v.position.y),std::min(group.lo.z,v.position.z)};
+                                group.hi={std::max(group.hi.x,v.position.x),std::max(group.hi.y,v.position.y),std::max(group.hi.z,v.position.z)};
+                                group.vertices.push_back(v);
+                            }
+                            group.geometric=std::max(group.geometric,recipe.error);
+                            authored->routes.push_back(p.route);
+                        }
+                        for(const auto& child:recipe.children)self(self,*child);
+                    };
+                    emit(emit,*node->architecture);
+                    if(authored->routes.size()!=node->sourceRoutes)Fail("LOD22 incomplete architecture recipe");
+                    std::sort(authored->routes.begin(),authored->routes.end());
+                    if(std::adjacent_find(authored->routes.begin(),authored->routes.end())!=authored->routes.end())
+                        Fail("LOD22 duplicate architecture descendant");
+                    replacement.node=std::move(authored);
+                    for(auto& [materialKind,group]:groups)
+                        group.geometric=node->architecture->error;
+                }
                 for(const auto& patch:node->patches){
                     if(patch.material>=alphaModes.size()||alphaModes[patch.material]>1u)
                         Fail("LOD23 invalid authored material");
@@ -1855,7 +1964,7 @@ void Graphics::Impl::PrepareForestPages(Frame& f,const XRFrame& xr,const GpuScen
             forestBuild.candidate.reset();
         }
     }
-    PrepareTerritorialCatalog();
+    PrepareTerritorialCatalog(xr,tiles);
     if(forestPending&&forestBuildQueue.fence->GetCompletedValue()>=forestPending->fence){
         // A producer snapshot can predate a mutation/reappearance. Never
         // withdraw a route still required by the current physical world.
@@ -2560,7 +2669,15 @@ void Graphics::Impl::PrepareTerritorialSelection(ForestSelectionWork& work){
             TerritorialGpuSelection::Node record{};
             if(const auto it=work.territorialNodes.find(key);it!=work.territorialNodes.end()){
                 const auto& node=*it->second.node;
-                if(!node.patches.empty()&&!it->second.representations.empty()){
+                if(node.architecture&&!it->second.representations.empty()){
+                    record.sphere=node.architecture->sphere;
+                    record.geometric=node.architecture->error;
+                    record.optical=0.f;
+                    // Geometry is admitted into the common source catalog.
+                    // Architecture render suppression is enabled only after
+                    // receiver/impact identity and consumer validation.
+                    record.selectable=0u;
+                }else if(!node.patches.empty()&&!it->second.representations.empty()){
                     XMFLOAT3 lo{INFINITY,INFINITY,INFINITY},hi{-INFINITY,-INFINITY,-INFINITY};
                     double opticalSquared=0.;
                     for(const auto& patch:node.patches){

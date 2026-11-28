@@ -173,6 +173,10 @@ public:
         std::vector<Vertex> triangles; // unindexed triples, mesh-local
     };
     static Mg2Pages FromAuthoredTriangles(std::span<const AuthoredMesh>);
+    // The same complete coarsest DAG cut as the individual GPU selector.
+    // Error is the maximum child-group refinement error, in source units.
+    float RootCutError(uint32_t mesh)const;
+    bool AppendRootCutTriangles(uint32_t mesh,std::vector<Vertex>& out)const;
     std::shared_ptr<const Mg2Pages> RetireMeshes(std::span<const uint32_t>)const;
     bool ClusterLive(uint32_t id)const noexcept{
         return id<nextClusterId_&&(id>=retiredClusterFlags_.size()||!retiredClusterFlags_[id]);

@@ -459,6 +459,35 @@ void Mg2Pages::BuildGpuCatalog(){
     }
 }
 
+float Mg2Pages::RootCutError(uint32_t mesh)const{
+    const auto found=pagesByMesh_.find(mesh);
+    if(found==pagesByMesh_.end()||retiredMeshes_.contains(mesh))return INFINITY;
+    float error=0.f;bool any=false;
+    for(const auto index:found->second){
+        if(hasParent_.at(index))continue;
+        const auto& page=*pages_.at(index);
+        for(const auto& cluster:page.clusters){
+            any=true;
+            if(cluster.refined<0)continue;
+            const auto& child=*pages_.at(size_t(cluster.refined));
+            if(!std::isfinite(child.error)||child.error<0.f)return INFINITY;
+            error=std::max(error,child.error);
+        }
+    }
+    return any?error:INFINITY;
+}
+bool Mg2Pages::AppendRootCutTriangles(uint32_t mesh,std::vector<Vertex>& out)const{
+    if(!std::isfinite(RootCutError(mesh)))return false;
+    const auto first=out.size();
+    for(const auto index:pagesByMesh_.at(mesh)){
+        if(hasParent_.at(index))continue;
+        for(const auto& cluster:pages_.at(index)->clusters){
+            if(cluster.indices.size()%3u)Fail("MG2 invalid source cut triangle count");
+            for(const auto local:cluster.indices)out.push_back(cluster.vertices.at(local));
+        }
+    }
+    return out.size()>first;
+}
 Mg2Pages Mg2Pages::FromAuthoredTriangles(std::span<const AuthoredMesh> meshes){
     Mg2Pages result;
     // 42 unshared triangles / 126 vertices fit the native 128/128 ABI.
